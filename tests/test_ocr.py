@@ -117,6 +117,29 @@ class OcrTests(unittest.TestCase):
         self.assertEqual(prediction.value, 7)
         self.assertGreater(prediction.confidence, 0.9)
 
+    def test_onnx_classifier_uses_closed_loop_to_disambiguate_five_from_six(self):
+        class FakeTensor:
+            name = "image"
+            shape = [None, 1, 28, 28]
+
+        class FiveBiasedSession:
+            def get_inputs(self):
+                return [FakeTensor()]
+
+            def get_outputs(self):
+                return [FakeTensor()]
+
+            def run(self, output_names, inputs):
+                return [[[0.01, 0.01, 0.01, 0.01, 0.01, 0.86, 0.06, 0.01, 0.01, 0.01]]]
+
+        image_bytes = make_synthetic_sudoku_image({(1, 1): 6})
+        cell = extract_sudoku_cells(image_bytes)[0]
+        classifier = OnnxDigitClassifier.from_session(FiveBiasedSession())
+
+        prediction = classifier.predict(cell.image)
+
+        self.assertEqual(prediction.value, 6)
+
 
 if __name__ == "__main__":
     unittest.main()

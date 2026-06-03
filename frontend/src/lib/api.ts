@@ -1,18 +1,5 @@
 import { gridToPayload, type OcrCell, type SudokuGrid } from "./sudoku-state";
 
-export type ValidationConflict = {
-  unit: "row" | "col" | "box";
-  unitNumber: number;
-  digit: number;
-  cells: Array<{ row: number; col: number }>;
-};
-
-export type ValidationResponse = {
-  valid: boolean;
-  conflicts: ValidationConflict[];
-  candidates: Record<string, number[]>;
-};
-
 export type HintResponse = {
   technique: {
     id: string;
@@ -40,10 +27,6 @@ export type OcrResponse = {
 };
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "";
-
-export async function validateGrid(grid: SudokuGrid): Promise<ValidationResponse> {
-  return postJson<ValidationResponse>(`${API_BASE_URL}/api/sudoku/validate`, { grid: gridToPayload(grid) });
-}
 
 export async function requestHint(grid: SudokuGrid): Promise<HintResponse> {
   return postJson<HintResponse>(`${API_BASE_URL}/api/sudoku/hint`, { grid: gridToPayload(grid) });

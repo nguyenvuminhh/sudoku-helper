@@ -191,6 +191,9 @@ class OnnxDigitClassifier:
         probabilities = _as_probabilities(output)
         label = int(np.argmax(probabilities))
         confidence = float(probabilities[label])
+        if label == 5 and _has_enclosed_loop(image):
+            six_confidence = float(probabilities[6]) if len(probabilities) > 6 else 0.0
+            return DigitPrediction(value=6, confidence=max(six_confidence, min(confidence, 0.86)))
         return DigitPrediction(value=None if label == 0 else label, confidence=confidence)
 
 
@@ -359,6 +362,22 @@ def _as_probabilities(output: object) -> object:
     shifted = values - np.max(values)
     exp_values = np.exp(shifted)
     return exp_values / np.sum(exp_values)
+
+
+def _has_enclosed_loop(image: object) -> bool:
+    cv2, _ = _cv2_np()
+    _, binary = cv2.threshold(image, 0, 255, cv2.THRESH_BINARY | cv2.THRESH_OTSU)
+    contours, hierarchy = cv2.findContours(binary, cv2.RETR_CCOMP, cv2.CHAIN_APPROX_SIMPLE)
+    if hierarchy is None:
+        return False
+
+    for contour, item in zip(contours, hierarchy[0], strict=False):
+        if item[3] == -1:
+            continue
+        x, y, w, h = cv2.boundingRect(contour)
+        if cv2.contourArea(contour) >= 4 and w >= 2 and h >= 2:
+            return True
+    return False
 
 
 def _ink_ratio(image: object) -> float:

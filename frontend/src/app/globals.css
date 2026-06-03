@@ -298,7 +298,8 @@ h2 {
 
 .action-grid {
   display: grid;
-  gap: 8px;
+  align-items: start;
+  gap: 12px;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   margin-top: 12px;
 }
@@ -306,6 +307,26 @@ h2 {
 .action-grid button {
   justify-content: flex-start;
   min-width: 0;
+  width: 100%;
+}
+
+.control-group {
+  display: grid;
+  gap: 7px;
+  min-width: 0;
+}
+
+.control-group-title {
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+.control-buttons {
+  display: grid;
+  gap: 8px;
 }
 
 .panel-title,

@@ -3,7 +3,6 @@
 import {
   AlertTriangle,
   Brain,
-  CheckCircle2,
   Eraser,
   Eye,
   Grid3X3,
@@ -19,10 +18,7 @@ import { ChangeEvent, useEffect, useMemo, useRef, useState } from "react";
 import {
   recognizeImage,
   requestHint,
-  validateGrid,
-  type HintResponse,
-  type ValidationConflict,
-  type ValidationResponse
+  type HintResponse
 } from "../lib/api";
 import {
   applyOcrCells,
@@ -34,7 +30,9 @@ import {
   parsePuzzleText,
   resolveKeyboardInput,
   setCellValue,
-  type SudokuGrid
+  validateSudokuGrid,
+  type SudokuGrid,
+  type ValidationConflict
 } from "../lib/sudoku-state";
 
 const SAMPLE_PUZZLE =
@@ -51,7 +49,6 @@ const SAMPLE_PUZZLE =
 export default function SudokuTutorPage() {
   const [grid, setGrid] = useState<SudokuGrid>(() => createEmptyGrid());
   const [selectedIndex, setSelectedIndex] = useState(0);
-  const [validation, setValidation] = useState<ValidationResponse | null>(null);
   const [currentHint, setCurrentHint] = useState<HintResponse | null>(null);
   const [history, setHistory] = useState<HintResponse[]>([]);
   const [lowConfidence, setLowConfidence] = useState<number[]>([]);
@@ -64,7 +61,9 @@ export default function SudokuTutorPage() {
 
   const filledCount = countFilledCells(grid);
   const selectedCell = indexToCell(selectedIndex);
-  const conflictIndexes = useMemo(() => collectConflictIndexes(validation?.conflicts ?? []), [validation]);
+  const validation = useMemo(() => validateSudokuGrid(grid), [grid]);
+  const statusMessages = validation.valid ? messages : ["Fix the highlighted conflicts before requesting a hint."];
+  const conflictIndexes = useMemo(() => collectConflictIndexes(validation.conflicts), [validation]);
   const primaryIndexes = useMemo(() => collectHintCells(currentHint, "primary"), [currentHint]);
   const relatedIndexes = useMemo(() => collectHintCells(currentHint, "related"), [currentHint]);
   const eliminationIndexes = useMemo(() => collectHintCells(currentHint, "elimination"), [currentHint]);
@@ -90,7 +89,6 @@ export default function SudokuTutorPage() {
 
   function updateGrid(nextGrid: SudokuGrid) {
     setGrid(nextGrid);
-    setValidation(null);
     setCurrentHint(null);
   }
 
@@ -104,25 +102,7 @@ export default function SudokuTutorPage() {
       setSelectedIndex(findNextInputIndex(nextGrid, selectedIndex));
       return nextGrid;
     });
-    setValidation(null);
     setCurrentHint(null);
-  }
-
-  async function handleValidate() {
-    setBusyLabel("Validating");
-    try {
-      const result = await validateGrid(grid);
-      setValidation(result);
-      setMessages(
-        result.valid
-          ? ["Grid is valid. Candidate notes are ready for empty cells."]
-          : ["Fix the highlighted conflicts before requesting a hint."]
-      );
-    } catch (error) {
-      setMessages([error instanceof Error ? error.message : "Validation failed."]);
-    } finally {
-      setBusyLabel(null);
-    }
   }
 
   async function handleHint() {
@@ -168,7 +148,6 @@ export default function SudokuTutorPage() {
 
   function resetPuzzle() {
     setGrid(createEmptyGrid());
-    setValidation(null);
     setCurrentHint(null);
     setHistory([]);
     setLowConfidence([]);
@@ -249,30 +228,41 @@ export default function SudokuTutorPage() {
               <h2>Controls</h2>
             </div>
             <div className="action-grid">
-              <button type="button" onClick={loadSample}>
-                <Sparkles size={17} />
-                Sample
-              </button>
-              <button type="button" onClick={() => fileInputRef.current?.click()}>
-                <ImageUp size={17} />
-                Upload
-              </button>
-              <button type="button" onClick={handleValidate} disabled={Boolean(busyLabel)}>
-                <CheckCircle2 size={17} />
-                Validate
-              </button>
-              <button className="primary" type="button" onClick={handleHint} disabled={Boolean(busyLabel) || filledCount === 0}>
-                {busyLabel === "Finding hint" ? <Loader2 className="spin" size={17} /> : <Lightbulb size={17} />}
-                Hint
-              </button>
-              <button type="button" className={showCandidates ? "toggle active" : "toggle"} onClick={() => setShowCandidates((value) => !value)}>
-                <Eye size={17} />
-                Candidates
-              </button>
-              <button type="button" onClick={resetPuzzle}>
-                <RotateCcw size={17} />
-                Reset
-              </button>
+              <div className="control-group" aria-label="Game controls">
+                <p className="control-group-title">Game</p>
+                <div className="control-buttons">
+                  <button type="button" onClick={loadSample}>
+                    <Sparkles size={17} />
+                    Sample
+                  </button>
+                  <button type="button" onClick={() => fileInputRef.current?.click()}>
+                    <ImageUp size={17} />
+                    Upload
+                  </button>
+                  <button type="button" onClick={resetPuzzle}>
+                    <RotateCcw size={17} />
+                    Reset
+                  </button>
+                </div>
+              </div>
+              <div className="control-group" aria-label="Hint controls">
+                <p className="control-group-title">Hint</p>
+                <div className="control-buttons">
+                  <button type="button" className={showCandidates ? "toggle active" : "toggle"} onClick={() => setShowCandidates((value) => !value)}>
+                    <Eye size={17} />
+                    Candidates
+                  </button>
+                  <button
+                    className="primary"
+                    type="button"
+                    onClick={handleHint}
+                    disabled={Boolean(busyLabel) || filledCount === 0 || !validation.valid}
+                  >
+                    {busyLabel === "Finding hint" ? <Loader2 className="spin" size={17} /> : <Lightbulb size={17} />}
+                    Hint
+                  </button>
+                </div>
+              </div>
             </div>
             <input ref={fileInputRef} className="hidden-input" type="file" accept="image/*" onChange={handleUpload} />
           </div>
@@ -288,7 +278,7 @@ export default function SudokuTutorPage() {
                 {busyLabel}...
               </p>
             ) : null}
-            <MessageList messages={messages} />
+            <MessageList messages={statusMessages} />
           </div>
 
           <HintPanel hint={currentHint} />
@@ -348,7 +338,7 @@ function HintPanel({ hint }: { hint: HintResponse | null }) {
           <Lightbulb size={18} />
           <h2>Next hint</h2>
         </div>
-        <p>Validate a puzzle and request a hint to see the next logical move.</p>
+        <p>Enter a valid puzzle and request a hint to see the next logical move.</p>
       </div>
     );
   }

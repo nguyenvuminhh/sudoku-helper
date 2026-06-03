@@ -18,4 +18,14 @@ describe("sudoku tutor layout source", () => {
     expect(actionsPanel).toBeGreaterThan(-1);
     expect(strategyPanel).toBeGreaterThan(actionsPanel);
   });
+
+  it("groups controls into game and hint sections without a validate button", () => {
+    const gameGroup = pageSource.indexOf('aria-label="Game controls"');
+    const hintGroup = pageSource.indexOf('aria-label="Hint controls"');
+
+    expect(gameGroup).toBeGreaterThan(-1);
+    expect(hintGroup).toBeGreaterThan(gameGroup);
+    expect(pageSource).not.toContain("handleValidate");
+    expect(pageSource).not.toContain(">Validate<");
+  });
 });

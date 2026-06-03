@@ -7,7 +7,8 @@ import {
   gridToPayload,
   parsePuzzleText,
   resolveKeyboardInput,
-  setCellValue
+  setCellValue,
+  validateSudokuGrid
 } from "./sudoku-state";
 
 describe("sudoku-state", () => {
@@ -51,5 +52,37 @@ describe("sudoku-state", () => {
 
     expect(findNextInputIndex(grid, 0)).toBe(3);
     expect(findNextInputIndex(grid, 80)).toBe(0);
+  });
+
+  it("recomputes candidates locally after a cell changes", () => {
+    let grid = createEmptyGrid();
+    grid = setCellValue(grid, 0, 1);
+
+    expect(validateSudokuGrid(grid).candidates["1"]).not.toContain(1);
+    expect(validateSudokuGrid(grid).candidates["1"]).toContain(2);
+
+    grid = setCellValue(grid, 0, 2);
+
+    expect(validateSudokuGrid(grid).candidates["1"]).toContain(1);
+    expect(validateSudokuGrid(grid).candidates["1"]).not.toContain(2);
+  });
+
+  it("detects row column and box conflicts locally", () => {
+    let grid = createEmptyGrid();
+    grid = setCellValue(grid, 0, 7);
+    grid = setCellValue(grid, 1, 7);
+    grid = setCellValue(grid, 9, 7);
+
+    const validation = validateSudokuGrid(grid);
+
+    expect(validation.valid).toBe(false);
+    expect(validation.candidates).toEqual({});
+    expect(validation.conflicts).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ unit: "row", unitNumber: 1, digit: 7 }),
+        expect.objectContaining({ unit: "col", unitNumber: 1, digit: 7 }),
+        expect.objectContaining({ unit: "box", unitNumber: 1, digit: 7 })
+      ])
+    );
   });
 });
