@@ -15,7 +15,7 @@ export function createEmptyGrid(): SudokuGrid {
 export function parsePuzzleText(text: string): SudokuGrid {
   const compact = text.replace(/[^0-9.]/g, "");
   if (compact.length !== 81) {
-    throw new Error("Paste exactly 81 digits, zeroes, or dots.");
+    throw new Error("Puzzle text must contain exactly 81 digits, zeroes, or dots.");
   }
 
   return compact.split("").map((char) => {
@@ -77,4 +77,24 @@ export function cellToIndex(cell: { row: number; col: number }): number {
 
 export function countFilledCells(grid: SudokuGrid): number {
   return grid.filter((value) => value !== null).length;
+}
+
+export function resolveKeyboardInput(key: string): CellValue | "ignored" {
+  if (/^[1-9]$/.test(key)) {
+    return Number(key);
+  }
+  if (key === " " || key === "0" || key === "Backspace" || key === "Delete") {
+    return null;
+  }
+  return "ignored";
+}
+
+export function findNextInputIndex(grid: SudokuGrid, currentIndex: number): number {
+  for (let offset = 1; offset <= 81; offset += 1) {
+    const index = (currentIndex + offset) % 81;
+    if (grid[index] === null) {
+      return index;
+    }
+  }
+  return currentIndex;
 }

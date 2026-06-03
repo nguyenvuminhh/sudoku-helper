@@ -3,8 +3,10 @@ import { describe, expect, it } from "vitest";
 import {
   applyOcrCells,
   createEmptyGrid,
+  findNextInputIndex,
   gridToPayload,
   parsePuzzleText,
+  resolveKeyboardInput,
   setCellValue
 } from "./sudoku-state";
 
@@ -35,5 +37,19 @@ describe("sudoku-state", () => {
     expect(result.grid[0]).toBe(7);
     expect(result.grid[80]).toBe(null);
     expect(result.lowConfidence).toEqual([80]);
+  });
+
+  it("resolves digit keys and space as clear input", () => {
+    expect(resolveKeyboardInput("7")).toBe(7);
+    expect(resolveKeyboardInput(" ")).toBe(null);
+    expect(resolveKeyboardInput("Backspace")).toBe(null);
+    expect(resolveKeyboardInput("ArrowRight")).toBe("ignored");
+  });
+
+  it("auto-skips to the next empty cell after keyboard input", () => {
+    const grid = setCellValue(setCellValue(createEmptyGrid(), 1, 4), 2, 6);
+
+    expect(findNextInputIndex(grid, 0)).toBe(3);
+    expect(findNextInputIndex(grid, 80)).toBe(0);
   });
 });

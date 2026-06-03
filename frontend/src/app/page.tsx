@@ -4,7 +4,6 @@ import {
   AlertTriangle,
   Brain,
   CheckCircle2,
-  ClipboardPaste,
   Eraser,
   Eye,
   Grid3X3,
@@ -13,10 +12,9 @@ import {
   Lightbulb,
   Loader2,
   RotateCcw,
-  Sparkles,
-  Upload
+  Sparkles
 } from "lucide-react";
-import { ChangeEvent, useMemo, useRef, useState } from "react";
+import { ChangeEvent, useEffect, useMemo, useRef, useState } from "react";
 
 import {
   recognizeImage,
@@ -31,8 +29,10 @@ import {
   cellToIndex,
   countFilledCells,
   createEmptyGrid,
+  findNextInputIndex,
   indexToCell,
   parsePuzzleText,
+  resolveKeyboardInput,
   setCellValue,
   type SudokuGrid
 } from "../lib/sudoku-state";
@@ -51,13 +51,12 @@ const SAMPLE_PUZZLE =
 export default function SudokuTutorPage() {
   const [grid, setGrid] = useState<SudokuGrid>(() => createEmptyGrid());
   const [selectedIndex, setSelectedIndex] = useState(0);
-  const [pasteText, setPasteText] = useState("");
   const [validation, setValidation] = useState<ValidationResponse | null>(null);
   const [currentHint, setCurrentHint] = useState<HintResponse | null>(null);
   const [history, setHistory] = useState<HintResponse[]>([]);
   const [lowConfidence, setLowConfidence] = useState<number[]>([]);
   const [messages, setMessages] = useState<string[]>([
-    "Enter a puzzle manually, paste 81 characters, or upload a clean Sudoku screenshot."
+    "Enter a puzzle on the board or upload a clean Sudoku screenshot."
   ]);
   const [busyLabel, setBusyLabel] = useState<string | null>(null);
   const [showCandidates, setShowCandidates] = useState(true);
@@ -70,6 +69,25 @@ export default function SudokuTutorPage() {
   const relatedIndexes = useMemo(() => collectHintCells(currentHint, "related"), [currentHint]);
   const eliminationIndexes = useMemo(() => collectHintCells(currentHint, "elimination"), [currentHint]);
 
+  useEffect(() => {
+    function handleWindowKeyDown(event: globalThis.KeyboardEvent) {
+      if (isEditableTarget(event.target) || event.altKey || event.ctrlKey || event.metaKey) {
+        return;
+      }
+
+      const value = resolveKeyboardInput(event.key);
+      if (value === "ignored") {
+        return;
+      }
+
+      event.preventDefault();
+      applyKeyboardValue(value);
+    }
+
+    window.addEventListener("keydown", handleWindowKeyDown);
+    return () => window.removeEventListener("keydown", handleWindowKeyDown);
+  }, [selectedIndex]);
+
   function updateGrid(nextGrid: SudokuGrid) {
     setGrid(nextGrid);
     setValidation(null);
@@ -80,14 +98,14 @@ export default function SudokuTutorPage() {
     updateGrid(setCellValue(grid, selectedIndex, value));
   }
 
-  function handlePasteImport() {
-    try {
-      updateGrid(parsePuzzleText(pasteText));
-      setLowConfidence([]);
-      setMessages(["Puzzle imported. Validate it, then ask for the next logical hint."]);
-    } catch (error) {
-      setMessages([error instanceof Error ? error.message : "Could not import puzzle text."]);
-    }
+  function applyKeyboardValue(value: number | null) {
+    setGrid((currentGrid) => {
+      const nextGrid = setCellValue(currentGrid, selectedIndex, value);
+      setSelectedIndex(findNextInputIndex(nextGrid, selectedIndex));
+      return nextGrid;
+    });
+    setValidation(null);
+    setCurrentHint(null);
   }
 
   async function handleValidate() {
@@ -154,57 +172,16 @@ export default function SudokuTutorPage() {
     setCurrentHint(null);
     setHistory([]);
     setLowConfidence([]);
-    setPasteText("");
-    setMessages(["Workspace cleared. Start with manual entry, paste import, or image upload."]);
+    setMessages(["Workspace cleared. Start with board entry or image upload."]);
   }
 
   return (
     <main className="workspace">
-      <section className="topbar" aria-label="Sudoku tutor controls">
+      <section className="topbar" aria-label="Sudoku tutor header">
         <div>
           <p className="eyebrow">Puzzle Hint</p>
           <h1>Sudoku strategy desk</h1>
         </div>
-        <div className="toolbar">
-          <button type="button" onClick={loadSample}>
-            <Sparkles size={17} />
-            Sample
-          </button>
-          <button type="button" onClick={() => fileInputRef.current?.click()}>
-            <ImageUp size={17} />
-            Upload
-          </button>
-          <button type="button" onClick={handleValidate} disabled={Boolean(busyLabel)}>
-            <CheckCircle2 size={17} />
-            Validate
-          </button>
-          <button className="primary" type="button" onClick={handleHint} disabled={Boolean(busyLabel) || filledCount === 0}>
-            {busyLabel === "Finding hint" ? <Loader2 className="spin" size={17} /> : <Lightbulb size={17} />}
-            Hint
-          </button>
-          <button type="button" onClick={resetPuzzle}>
-            <RotateCcw size={17} />
-            Reset
-          </button>
-        </div>
-        <input ref={fileInputRef} className="hidden-input" type="file" accept="image/*" onChange={handleUpload} />
-      </section>
-
-      <section className="import-strip" aria-label="Puzzle import">
-        <ClipboardPaste size={18} />
-        <input
-          value={pasteText}
-          onChange={(event) => setPasteText(event.target.value)}
-          placeholder="Paste 81 characters, using 0 or . for blanks"
-        />
-        <button type="button" onClick={handlePasteImport}>
-          <Upload size={16} />
-          Import
-        </button>
-        <button type="button" className={showCandidates ? "toggle active" : "toggle"} onClick={() => setShowCandidates((value) => !value)}>
-          <Eye size={16} />
-          Candidates
-        </button>
       </section>
 
       <section className="content-grid">
@@ -266,6 +243,40 @@ export default function SudokuTutorPage() {
         </section>
 
         <aside className="inspector" aria-label="Hint explanation">
+          <div className="actions-panel" aria-label="Sudoku controls">
+            <div className="panel-title">
+              <Grid3X3 size={19} />
+              <h2>Controls</h2>
+            </div>
+            <div className="action-grid">
+              <button type="button" onClick={loadSample}>
+                <Sparkles size={17} />
+                Sample
+              </button>
+              <button type="button" onClick={() => fileInputRef.current?.click()}>
+                <ImageUp size={17} />
+                Upload
+              </button>
+              <button type="button" onClick={handleValidate} disabled={Boolean(busyLabel)}>
+                <CheckCircle2 size={17} />
+                Validate
+              </button>
+              <button className="primary" type="button" onClick={handleHint} disabled={Boolean(busyLabel) || filledCount === 0}>
+                {busyLabel === "Finding hint" ? <Loader2 className="spin" size={17} /> : <Lightbulb size={17} />}
+                Hint
+              </button>
+              <button type="button" className={showCandidates ? "toggle active" : "toggle"} onClick={() => setShowCandidates((value) => !value)}>
+                <Eye size={17} />
+                Candidates
+              </button>
+              <button type="button" onClick={resetPuzzle}>
+                <RotateCcw size={17} />
+                Reset
+              </button>
+            </div>
+            <input ref={fileInputRef} className="hidden-input" type="file" accept="image/*" onChange={handleUpload} />
+          </div>
+
           <div className="status-panel">
             <div className="panel-title">
               <Brain size={19} />
@@ -387,4 +398,12 @@ function collectHintCells(hint: HintResponse | null, kind: "primary" | "related"
     return new Set(hint.highlights.related_cells.map(cellToIndex));
   }
   return new Set(hint.highlights.eliminations.map((item) => cellToIndex(item.cell)));
+}
+
+function isEditableTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) {
+    return false;
+  }
+  const tagName = target.tagName.toLowerCase();
+  return tagName === "input" || tagName === "textarea" || target.isContentEditable;
 }

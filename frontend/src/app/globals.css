@@ -87,7 +87,6 @@ h2 {
 }
 
 .topbar,
-.import-strip,
 .board-zone,
 .inspector > div {
   background: rgba(255, 255, 255, 0.88);
@@ -100,7 +99,7 @@ h2 {
   align-items: center;
   display: flex;
   gap: 20px;
-  justify-content: space-between;
+  justify-content: flex-start;
   padding: 18px 20px;
 }
 
@@ -118,13 +117,6 @@ h2 {
   margin-top: 2px;
 }
 
-.toolbar {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  justify-content: flex-end;
-}
-
 .primary {
   background: var(--teal);
   border-color: var(--teal);
@@ -133,23 +125,6 @@ h2 {
 
 .hidden-input {
   display: none;
-}
-
-.import-strip {
-  align-items: center;
-  display: grid;
-  gap: 10px;
-  grid-template-columns: auto minmax(180px, 1fr) auto auto;
-  margin-top: 14px;
-  padding: 12px;
-}
-
-.import-strip input {
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  min-height: 40px;
-  padding: 0.55rem 0.7rem;
-  width: 100%;
 }
 
 .toggle.active {
@@ -317,6 +292,22 @@ h2 {
   padding: 16px;
 }
 
+.actions-panel {
+  border-top: 5px solid var(--ink);
+}
+
+.action-grid {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin-top: 12px;
+}
+
+.action-grid button {
+  justify-content: flex-start;
+  min-width: 0;
+}
+
 .panel-title,
 .technique-row {
   align-items: center;
@@ -468,22 +459,13 @@ h2 {
     padding: 14px;
   }
 
-  .topbar {
-    align-items: flex-start;
-    flex-direction: column;
-  }
-
-  .toolbar {
-    justify-content: flex-start;
-  }
-
   .content-grid {
     grid-template-columns: 1fr;
   }
 }
 
 @media (max-width: 620px) {
-  .import-strip {
+  .action-grid {
     grid-template-columns: 1fr;
   }
 
