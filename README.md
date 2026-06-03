@@ -40,9 +40,14 @@ Then open `http://127.0.0.1:8000`.
 For frontend-only development against a running FastAPI server:
 
 ```bash
-cd frontend
-NEXT_PUBLIC_API_BASE_URL=http://127.0.0.1:8000 npm run dev
+make be
 ```
+
+```bash
+make fe
+```
+
+Run those in two separate terminals. `make be` starts FastAPI on `127.0.0.1:8000` with hot reload and CORS configured in `backend/app/main.py`. `make fe` starts Next.js on `127.0.0.1:3000` and points it at the backend.
 
 ## Image Import Pipeline
 
@@ -56,15 +61,25 @@ image upload
 -> largest square contour detection
 -> perspective warp to a flat 9x9 grid
 -> split into 81 cell images
--> blank detection
+-> blank detection that ignores small pencil notes
 -> digit classifier
 -> Sudoku consistency warnings
 -> editable correction grid
 ```
 
-By default the backend uses a lightweight OpenCV template digit classifier so it works without a trained model. For better accuracy, set `SUDOKU_DIGIT_MODEL=/path/to/model.keras` and install TensorFlow; the model should classify labels `0..9`, where `0` means blank and `1..9` are Sudoku digits.
+By default the backend uses a lightweight OpenCV template digit classifier so it works without a trained model. For better accuracy, install the optional pretrained model:
+
+```bash
+make model
+```
+
+That downloads `onnxmodelzoo/mnist-8` from Hugging Face into `data/models/onnx-mnist/mnist-8.onnx`. Hugging Face lists this model as `Apache-2.0`. When that file exists, the backend uses it automatically. You can override the ONNX model path with `SUDOKU_DIGIT_MODEL=/path/to/model.onnx`.
+
+The bundled MNIST model predicts labels `0..9`; blank handling is done before model inference by OpenCV. A predicted `0` is treated as empty because Sudoku cells only contain `1..9`.
 
 Tesseract remains only as a fallback if OpenCV grid extraction fails. Users should still review detected digits before requesting a hint.
+
+The importer intentionally reads only large given/entered digits. Small candidate notes inside a Sudoku cell are ignored.
 
 ## Verification
 

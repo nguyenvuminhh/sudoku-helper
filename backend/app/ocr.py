@@ -3,12 +3,18 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass
 from io import BytesIO
+from pathlib import Path
 from typing import Protocol
 
 from backend.app.sudoku.grid import parse_grid, validate_grid
 
 WARPED_GRID_SIZE = 450
 CLASSIFIER_SIZE = 28
+DEFAULT_DIGIT_MODEL_REPO = "onnxmodelzoo/mnist-8"
+DEFAULT_DIGIT_MODEL_FILENAME = "mnist-8.onnx"
+DEFAULT_DIGIT_MODEL_PATH = (
+    Path(__file__).resolve().parents[2] / "data" / "models" / "onnx-mnist" / DEFAULT_DIGIT_MODEL_FILENAME
+)
 
 
 @dataclass(frozen=True)
@@ -80,9 +86,8 @@ def recognize_sudoku_image(image_bytes: bytes, filename: str) -> OcrResult:
             return OcrResult(
                 cells=_empty_cells(),
                 warnings=[
-                    f"Image import failed for {filename or 'the upload'}: {exc}",
-                    f"Generic OCR fallback also failed: {fallback_exc}",
-                    "The image was accepted; enter the puzzle manually in the correction grid.",
+                    f"Could not find a Sudoku grid in {filename or 'the upload'}.",
+                    "Use a clean crop with the full outer border visible, or enter the puzzle manually in the correction grid.",
                 ],
             )
 
@@ -121,8 +126,15 @@ def extract_sudoku_cells(image_bytes: bytes) -> list[ExtractedCell]:
 def load_digit_classifier() -> DigitClassifier:
     model_path = os.getenv("SUDOKU_DIGIT_MODEL")
     if model_path:
-        return TensorFlowDigitClassifier(model_path)
+        return OnnxDigitClassifier(model_path)
+    downloaded_model = default_digit_model_path()
+    if downloaded_model.exists():
+        return OnnxDigitClassifier(downloaded_model)
     return TemplateDigitClassifier()
+
+
+def default_digit_model_path() -> Path:
+    return DEFAULT_DIGIT_MODEL_PATH
 
 
 class TemplateDigitClassifier:
@@ -151,11 +163,21 @@ class TemplateDigitClassifier:
         return DigitPrediction(value=best_digit, confidence=confidence)
 
 
-class TensorFlowDigitClassifier:
-    def __init__(self, model_path: str) -> None:
-        import tensorflow as tf  # type: ignore[import-not-found]
+class OnnxDigitClassifier:
+    def __init__(self, model_path: str | Path) -> None:
+        import onnxruntime as ort  # type: ignore[import-not-found]
 
-        self._model = tf.keras.models.load_model(model_path)
+        self._session = ort.InferenceSession(str(model_path), providers=["CPUExecutionProvider"])
+        self._input = self._session.get_inputs()[0]
+        self._output_name = self._session.get_outputs()[0].name
+
+    @classmethod
+    def from_session(cls, session: object) -> "OnnxDigitClassifier":
+        instance = cls.__new__(cls)
+        instance._session = session
+        instance._input = session.get_inputs()[0]
+        instance._output_name = session.get_outputs()[0].name
+        return instance
 
     def predict(self, cell_image: object) -> DigitPrediction:
         _, np = _cv2_np()
@@ -163,9 +185,10 @@ class TensorFlowDigitClassifier:
         if _ink_ratio(image) < 0.018:
             return DigitPrediction(value=None, confidence=0.96)
 
-        sample = (255 - image).astype("float32") / 255.0
-        sample = sample.reshape((1, CLASSIFIER_SIZE, CLASSIFIER_SIZE, 1))
-        probabilities = self._model.predict(sample, verbose=0)[0]
+        sample = image.astype("float32") / 255.0
+        sample = _shape_onnx_sample(sample, self._input.shape)
+        output = self._session.run([self._output_name], {self._input.name: sample})[0][0]
+        probabilities = _as_probabilities(output)
         label = int(np.argmax(probabilities))
         confidence = float(probabilities[label])
         return DigitPrediction(value=None if label == 0 else label, confidence=confidence)
@@ -238,14 +261,14 @@ def _normalize_digit_image(image: object) -> tuple[object, float]:
     blurred = cv2.GaussianBlur(image, (3, 3), 0)
     _, binary = cv2.threshold(blurred, 0, 255, cv2.THRESH_BINARY_INV | cv2.THRESH_OTSU)
     contours, _ = cv2.findContours(binary, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-    contours = [contour for contour in contours if cv2.contourArea(contour) >= 8]
-    ink_ratio = float(np.count_nonzero(binary)) / float(binary.size)
+    large_contours = _large_digit_contours(contours, image.shape[:2])
 
-    if not contours:
-        return np.zeros((CLASSIFIER_SIZE, CLASSIFIER_SIZE), dtype=np.uint8), ink_ratio
+    if not large_contours:
+        return np.zeros((CLASSIFIER_SIZE, CLASSIFIER_SIZE), dtype=np.uint8), 0.0
 
-    x, y, w, h = cv2.boundingRect(np.vstack(contours))
+    x, y, w, h = cv2.boundingRect(np.vstack(large_contours))
     digit = binary[y : y + h, x : x + w]
+    ink_ratio = float(np.count_nonzero(digit)) / float(binary.size)
     scale = min(20 / max(w, 1), 20 / max(h, 1))
     resized = cv2.resize(digit, (max(1, int(w * scale)), max(1, int(h * scale))), interpolation=cv2.INTER_AREA)
     canvas = np.zeros((CLASSIFIER_SIZE, CLASSIFIER_SIZE), dtype=np.uint8)
@@ -253,6 +276,26 @@ def _normalize_digit_image(image: object) -> tuple[object, float]:
     left = (CLASSIFIER_SIZE - resized.shape[1]) // 2
     canvas[top : top + resized.shape[0], left : left + resized.shape[1]] = resized
     return canvas, ink_ratio
+
+
+def _large_digit_contours(contours: object, image_shape: tuple[int, int]) -> list[object]:
+    cv2, _ = _cv2_np()
+    height, width = image_shape
+    large_contours: list[object] = []
+
+    for contour in contours:
+        area = cv2.contourArea(contour)
+        if area < 10:
+            continue
+
+        x, y, w, h = cv2.boundingRect(contour)
+        is_tall_digit = h >= height * 0.42
+        is_substantial = area >= height * width * 0.025
+        not_grid_noise = w <= width * 0.92 and h <= height
+        if is_tall_digit and is_substantial and not_grid_noise:
+            large_contours.append(contour)
+
+    return large_contours
 
 
 def _build_digit_templates() -> dict[int, object]:
@@ -296,6 +339,26 @@ def _ensure_uint8_cell(cell_image: object) -> object:
     if image.shape != (CLASSIFIER_SIZE, CLASSIFIER_SIZE):
         raise ValueError("digit classifier expects a 28x28 cell image")
     return image.astype("uint8")
+
+
+def _shape_onnx_sample(sample: object, input_shape: object) -> object:
+    _, np = _cv2_np()
+    shape = list(input_shape or [])
+    if len(shape) == 4 and shape[1] == 1:
+        return sample.reshape((1, 1, CLASSIFIER_SIZE, CLASSIFIER_SIZE)).astype("float32")
+    return sample.reshape((1, CLASSIFIER_SIZE, CLASSIFIER_SIZE, 1)).astype("float32")
+
+
+def _as_probabilities(output: object) -> object:
+    _, np = _cv2_np()
+    values = np.asarray(output, dtype="float32").reshape(-1)
+    total = float(np.sum(values))
+    if len(values) == 10 and np.all(values >= 0) and 0.98 <= total <= 1.02:
+        return values
+
+    shifted = values - np.max(values)
+    exp_values = np.exp(shifted)
+    return exp_values / np.sum(exp_values)
 
 
 def _ink_ratio(image: object) -> float:

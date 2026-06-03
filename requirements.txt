@@ -8,6 +8,3 @@ opencv-python-headless>=4.10,<5
 # The system tesseract binary is also required for this fallback.
 pillow>=12,<13
 pytesseract>=0.3.13,<1
-
-# Optional CNN classifier support via SUDOKU_DIGIT_MODEL:
-# tensorflow>=2.16,<3

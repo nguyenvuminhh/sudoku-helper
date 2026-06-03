@@ -24,6 +24,22 @@ npm run typecheck
 npm run build
 ```
 
+Run hot-reload development servers from the repo root in two terminals:
+
+```bash
+make be
+```
+
+```bash
+make fe
+```
+
+Install the optional pretrained digit classifier:
+
+```bash
+make model
+```
+
 Run the production-style app:
 
 ```bash
@@ -43,6 +59,8 @@ python3 -m uvicorn backend.app.main:app --host 127.0.0.1 --port 8000
 - Do not depend on external AI services for image import unless the product direction changes.
 - Image import should use OpenCV grid extraction before digit classification.
 - Keep generic OCR such as Tesseract as fallback only, not the primary path.
+- Image import must ignore pencil-note/candidate digits and classify only large cell digits.
+- Prefer `data/models/onnx-mnist/mnist-8.onnx` when installed; it is downloaded by `make model` and Hugging Face lists it as `Apache-2.0`.
 - Treat image import as an editable assistant, not fully trustworthy OCR.
 
 ## UX Rules

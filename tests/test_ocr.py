@@ -1,8 +1,12 @@
 import unittest
+from unittest.mock import patch
 
 from backend.app.ocr import (
+    OnnxDigitClassifier,
     TemplateDigitClassifier,
+    default_digit_model_path,
     extract_sudoku_cells,
+    load_digit_classifier,
     recognize_sudoku_image,
 )
 
@@ -15,6 +19,18 @@ class OcrTests(unittest.TestCase):
         self.assertTrue(all(0 <= cell.confidence <= 1 for cell in result.cells))
         self.assertTrue(all(cell.value is None or 1 <= cell.value <= 9 for cell in result.cells))
         self.assertGreaterEqual(len(result.warnings), 1)
+
+    def test_failed_import_does_not_expose_tesseract_install_errors(self):
+        with (
+            patch("backend.app.ocr.extract_sudoku_cells", side_effect=ValueError("no grid")),
+            patch("backend.app.ocr._recognize_with_tesseract", side_effect=RuntimeError("tesseract is not installed")),
+        ):
+            result = recognize_sudoku_image(b"not-a-real-image", "bad-upload.txt")
+
+        warning_text = " ".join(result.warnings).lower()
+        self.assertNotIn("tesseract", warning_text)
+        self.assertNotIn("generic ocr fallback", warning_text)
+        self.assertIn("could not find a sudoku grid", warning_text)
 
     def test_extract_sudoku_cells_finds_positions_from_grid_image(self):
         image_bytes = make_synthetic_sudoku_image({(1, 1): 5, (5, 5): 9, (9, 9): 2})
@@ -39,12 +55,77 @@ class OcrTests(unittest.TestCase):
         self.assertEqual(prediction.value, 7)
         self.assertGreater(prediction.confidence, 0.5)
 
+    def test_pencil_notes_are_ignored_as_blank_cells(self):
+        image_bytes = make_synthetic_sudoku_image({}, notes={(1, 1): [1, 2, 6, 9]})
+        cell = extract_sudoku_cells(image_bytes)[0]
+
+        prediction = TemplateDigitClassifier().predict(cell.image)
+
+        self.assertFalse(cell.has_ink)
+        self.assertIsNone(prediction.value)
+
+    def test_large_digit_is_used_when_cell_also_has_notes(self):
+        image_bytes = make_synthetic_sudoku_image({(1, 1): 6}, notes={(1, 1): [1, 2, 7, 9]})
+        cell = extract_sudoku_cells(image_bytes)[0]
+
+        prediction = TemplateDigitClassifier().predict(cell.image)
+
+        self.assertTrue(cell.has_ink)
+        self.assertEqual(prediction.value, 6)
+
+    def test_load_digit_classifier_prefers_downloaded_default_model(self):
+        with (
+            patch("backend.app.ocr.Path.exists", return_value=True),
+            patch("backend.app.ocr.OnnxDigitClassifier") as classifier,
+            patch.dict("os.environ", {}, clear=True),
+        ):
+            load_digit_classifier()
+
+        classifier.assert_called_once_with(default_digit_model_path())
+
+    def test_load_digit_classifier_uses_env_model_path(self):
+        with (
+            patch("backend.app.ocr.OnnxDigitClassifier") as classifier,
+            patch.dict("os.environ", {"SUDOKU_DIGIT_MODEL": "/tmp/model.onnx"}, clear=True),
+        ):
+            load_digit_classifier()
+
+        classifier.assert_called_once_with("/tmp/model.onnx")
+
+    def test_onnx_classifier_can_use_probability_like_model(self):
+        class FakeTensor:
+            name = "image"
+            shape = [None, 1, 28, 28]
+
+        class FakeSession:
+            def get_inputs(self):
+                return [FakeTensor()]
+
+            def get_outputs(self):
+                return [FakeTensor()]
+
+            def run(self, output_names, inputs):
+                self.inputs = inputs
+                return [[[0.01, 0.01, 0.01, 0.01, 0.01, 0.01, 0.01, 0.91, 0.01, 0.01]]]
+
+        image_bytes = make_synthetic_sudoku_image({(1, 1): 7})
+        cell = extract_sudoku_cells(image_bytes)[0]
+        classifier = OnnxDigitClassifier.from_session(FakeSession())
+
+        prediction = classifier.predict(cell.image)
+
+        self.assertEqual(prediction.value, 7)
+        self.assertGreater(prediction.confidence, 0.9)
+
 
 if __name__ == "__main__":
     unittest.main()
 
 
-def make_synthetic_sudoku_image(digits: dict[tuple[int, int], int]) -> bytes:
+def make_synthetic_sudoku_image(
+    digits: dict[tuple[int, int], int],
+    notes: dict[tuple[int, int], list[int]] | None = None,
+) -> bytes:
     import cv2
     import numpy as np
 
@@ -67,6 +148,24 @@ def make_synthetic_sudoku_image(digits: dict[tuple[int, int], int]) -> bytes:
         x = (col - 1) * cell + (cell - text_size[0]) // 2
         y = (row - 1) * cell + (cell + text_size[1]) // 2
         cv2.putText(image, text, (x, y), font, scale, 0, thickness, cv2.LINE_AA)
+
+    note_slots = [
+        (0.18, 0.24),
+        (0.46, 0.24),
+        (0.74, 0.24),
+        (0.18, 0.52),
+        (0.46, 0.52),
+        (0.74, 0.52),
+        (0.18, 0.80),
+        (0.46, 0.80),
+        (0.74, 0.80),
+    ]
+    for (row, col), note_digits in (notes or {}).items():
+        for digit in note_digits:
+            slot_x, slot_y = note_slots[digit - 1]
+            x = int((col - 1) * cell + cell * slot_x - 5)
+            y = int((row - 1) * cell + cell * slot_y + 5)
+            cv2.putText(image, str(digit), (x, y), cv2.FONT_HERSHEY_SIMPLEX, 0.38, 0, 1, cv2.LINE_AA)
 
     ok, encoded = cv2.imencode(".png", image)
     if not ok:
