@@ -13,7 +13,7 @@ from pydantic import BaseModel
 
 from backend.app.ocr import recognize_sudoku_image
 from backend.app.sudoku.engine import EngineError, EngineUnavailable, generate_puzzle
-from backend.app.sudoku.grid import candidate_map, parse_grid, validate_grid
+from backend.app.sudoku.grid import candidate_map, parse_candidate_map, parse_grid, validate_grid
 from backend.app.sudoku.solver import next_hint
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -22,6 +22,7 @@ DEFAULT_STATIC_DIR = PROJECT_ROOT / "frontend" / "out"
 
 class GridRequest(BaseModel):
     grid: str | list[int | str | None]
+    candidates: dict[str, list[int | str]] | None = None
 
 
 class GenerateRequest(BaseModel):
@@ -67,7 +68,8 @@ def create_app(static_dir: Path | None = DEFAULT_STATIC_DIR, cors_origins: list[
                 status_code=422,
                 detail=[{"message": "Grid has conflicts.", "conflicts": validation.conflicts}],
             )
-        return next_hint(grid).to_dict()
+        candidates = _parse_candidates_or_422(grid, payload.candidates) if payload.candidates is not None else None
+        return next_hint(grid, candidates=candidates).to_dict()
 
     @app.post("/api/sudoku/generate")
     def generate(payload: GenerateRequest) -> dict[str, object]:
@@ -92,6 +94,13 @@ def create_app(static_dir: Path | None = DEFAULT_STATIC_DIR, cors_origins: list[
 def _parse_or_422(raw_grid: str | list[int | str | None]) -> list[int]:
     try:
         return parse_grid(raw_grid)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=[{"message": str(exc)}]) from exc
+
+
+def _parse_candidates_or_422(raw_grid: list[int], raw_candidates: dict[str, list[int | str]]) -> dict[int, set[int]]:
+    try:
+        return parse_candidate_map(raw_grid, raw_candidates)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=[{"message": str(exc)}]) from exc
 

@@ -46,13 +46,13 @@ class Hint:
         return asdict(self)
 
 
-def next_hint(raw_grid: list[int] | str) -> Hint:
+def next_hint(raw_grid: list[int] | str, candidates: dict[int, set[int]] | None = None) -> Hint:
     grid = parse_grid(raw_grid) if not isinstance(raw_grid, list) else raw_grid
     validation = validate_grid(grid)
     if not validation.valid:
         raise ValueError("Cannot generate a hint for a grid with conflicts.")
 
-    candidates = candidate_map(grid)
+    candidates = candidates if candidates is not None else candidate_map(grid)
     return (
         _find_naked_single(candidates)
         or _find_hidden_single(candidates)

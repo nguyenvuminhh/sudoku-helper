@@ -27,6 +27,7 @@ import {
   type HintResponse
 } from "../lib/api";
 import {
+  applyHintEliminationsToNotes,
   applyOcrCells,
   cellToIndex,
   collectMatchingDigitHighlights,
@@ -113,6 +114,9 @@ export default function SudokuTutorPage() {
   const relatedIndexes = useMemo(() => collectHintCells(currentHint, "related"), [currentHint]);
   const eliminationIndexes = useMemo(() => collectHintCells(currentHint, "elimination"), [currentHint]);
   const hintPreview = useMemo(() => collectHintPreview(currentHint, grid), [currentHint, grid]);
+  const canApplyCurrentHint =
+    !busyLabel &&
+    (Boolean(hintPreview) || Boolean(currentHint?.action.type === "eliminate" && currentHint.action.eliminations.length > 0));
 
   useEffect(() => {
     function handleWindowKeyDown(event: globalThis.KeyboardEvent) {
@@ -233,16 +237,29 @@ export default function SudokuTutorPage() {
   }
 
   function handleApplyHint() {
-    if (!hintPreview) {
+    if (!currentHint) {
       return;
     }
 
-    const cell = indexToCell(hintPreview.index);
-    const result = setCellValueWithNotes(grid, notes, hintPreview.index, hintPreview.digit);
-    updateGrid(result.grid, result.notes);
-    setSelectedIndex(hintPreview.index);
-    setLowConfidence((indexes) => indexes.filter((index) => index !== hintPreview.index));
-    setMessages([`Applied ${hintPreview.digit} at R${cell.row}C${cell.col}. Request another hint when you are ready.`]);
+    if (hintPreview) {
+      const cell = indexToCell(hintPreview.index);
+      const result = setCellValueWithNotes(grid, notes, hintPreview.index, hintPreview.digit);
+      updateGrid(result.grid, result.notes);
+      setSelectedIndex(hintPreview.index);
+      setLowConfidence((indexes) => indexes.filter((index) => index !== hintPreview.index));
+      setMessages([`Applied ${hintPreview.digit} at R${cell.row}C${cell.col}. Request another hint when you are ready.`]);
+      return;
+    }
+
+    if (currentHint.action.type === "eliminate" && currentHint.action.eliminations.length > 0) {
+      const nextNotes = applyHintEliminationsToNotes(grid, notes, currentHint.action.eliminations);
+      const firstCell = currentHint.action.eliminations[0].cell;
+      updateGrid(grid, nextNotes);
+      setSelectedIndex(cellToIndex(firstCell));
+      setMessages([
+        `Applied ${currentHint.action.eliminations.length} candidate elimination${currentHint.action.eliminations.length === 1 ? "" : "s"}. Request another hint when you are ready.`
+      ]);
+    }
   }
 
   function applyKeyboardValue(value: number | null) {
@@ -257,7 +274,7 @@ export default function SudokuTutorPage() {
 
     setBusyLabel("Finding hint");
     try {
-      const hint = await requestHint(grid);
+      const hint = await requestHint(grid, notes);
       setCurrentHint(hint);
       setHistory((items) => [hint, ...items].slice(0, 8));
       setMessages(["Hint found. Review the conclusion, then expand through the evidence."]);
@@ -663,7 +680,7 @@ export default function SudokuTutorPage() {
             <MessageList messages={statusMessages} />
           </div>
 
-          <HintPanel canApplyHint={Boolean(hintPreview) && !busyLabel} hint={currentHint} onApplyHint={handleApplyHint} />
+          <HintPanel canApplyHint={canApplyCurrentHint} hint={currentHint} onApplyHint={handleApplyHint} />
 
           <div className="history-panel">
             <div className="panel-title">

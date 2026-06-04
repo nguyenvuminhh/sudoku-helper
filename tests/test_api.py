@@ -6,6 +6,7 @@ from unittest.mock import patch
 from fastapi.testclient import TestClient
 
 from backend.app.sudoku.engine import Attribution, DifficultyLevel, GeneratedPuzzle
+from backend.app.sudoku.grid import candidate_map, parse_grid
 from backend.app.main import _parse_cors_origins, create_app
 
 
@@ -21,6 +22,18 @@ REFERENCE_GRID = (
     "900400560"
 )
 
+LOCKED_CANDIDATE_GRID = (
+    "000010020"
+    "108267304"
+    "623000000"
+    "900026000"
+    "200000003"
+    "000590201"
+    "000030708"
+    "301970400"
+    "070050030"
+)
+
 
 class ApiTests(unittest.TestCase):
     def test_hint_endpoint_returns_structured_hint(self):
@@ -33,6 +46,31 @@ class ApiTests(unittest.TestCase):
         self.assertEqual(body["technique"]["id"], "hidden_single")
         self.assertEqual(body["action"]["cell"], {"row": 5, "col": 9})
         self.assertEqual(body["action"]["digit"], 3)
+
+    def test_hint_endpoint_uses_candidate_payload_to_skip_applied_elimination(self):
+        client = TestClient(create_app(static_dir=None))
+        candidates = {
+            str(index): sorted(digits)
+            for index, digits in candidate_map(parse_grid(LOCKED_CANDIDATE_GRID)).items()
+        }
+        candidates["3"].remove(4)
+        candidates["5"].remove(4)
+
+        response = client.post(
+            "/api/sudoku/hint",
+            json={"grid": LOCKED_CANDIDATE_GRID, "candidates": candidates},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        self.assertNotEqual(body["summary"], "4 is locked in row 1 inside box 1.")
+        self.assertNotEqual(
+            body["action"]["eliminations"],
+            [
+                {"cell": {"row": 1, "col": 4}, "digit": 4},
+                {"cell": {"row": 1, "col": 6}, "digit": 4},
+            ],
+        )
 
     def test_invalid_grid_blocks_hinting(self):
         client = TestClient(create_app(static_dir=None))

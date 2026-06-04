@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   applyOcrCells,
+  applyHintEliminationsToNotes,
   collectMatchingDigitHighlights,
   createEmptyNotes,
   createEmptyGrid,
@@ -12,6 +13,7 @@ import {
   quickFillNotes,
   removeAllNotes,
   resolveKeyboardInput,
+  notesToCandidatePayload,
   setCellValue,
   setCellValueWithNotes,
   toggleCellNote,
@@ -175,5 +177,44 @@ describe("sudoku-state", () => {
 
     expect(highlights.valueIndexes).toEqual([0, 10]);
     expect(highlights.noteIndexes).toEqual([1, 79]);
+  });
+
+  it("applies hint eliminations by removing those candidate notes", () => {
+    const grid = parsePuzzleText(
+      "000010020" +
+        "108267304" +
+        "623000000" +
+        "900026000" +
+        "200000003" +
+        "000590201" +
+        "000030708" +
+        "301970400" +
+        "070050030"
+    );
+    const notes = quickFillNotes(grid);
+
+    const nextNotes = applyHintEliminationsToNotes(grid, notes, [
+      { cell: { row: 1, col: 4 }, digit: 4 },
+      { cell: { row: 1, col: 6 }, digit: 4 }
+    ]);
+
+    expect(notes[3]).toContain(4);
+    expect(notes[5]).toContain(4);
+    expect(nextNotes[3]).not.toContain(4);
+    expect(nextNotes[3]).toEqual([3, 8]);
+    expect(nextNotes[5]).not.toContain(4);
+    expect(nextNotes[5]).toEqual([3, 5, 8, 9]);
+  });
+
+  it("serializes notes as candidate payload while filling unnoted empty cells from grid candidates", () => {
+    const grid = parsePuzzleText("1" + "0".repeat(80));
+    const notes = createEmptyNotes();
+    notes[1] = [2, 3];
+
+    const payload = notesToCandidatePayload(grid, notes);
+
+    expect(payload?.["1"]).toEqual([2, 3]);
+    expect(payload?.["2"]).toEqual([2, 3, 4, 5, 6, 7, 8, 9]);
+    expect(payload?.["0"]).toBeUndefined();
   });
 });

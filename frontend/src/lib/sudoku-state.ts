@@ -20,6 +20,9 @@ export type ValidationResponse = {
   candidates: Record<string, number[]>;
 };
 
+export type CandidateElimination = { cell: { row: number; col: number }; digit: number };
+export type CandidatePayload = Record<string, number[]>;
+
 const DIGITS = [1, 2, 3, 4, 5, 6, 7, 8, 9] as const;
 
 export type OcrCell = {
@@ -117,6 +120,49 @@ export function quickFillNotes(grid: SudokuGrid): NotesGrid {
 
 export function removeAllNotes(_notes?: NotesGrid): NotesGrid {
   return createEmptyNotes();
+}
+
+export function applyHintEliminationsToNotes(
+  grid: SudokuGrid,
+  notes: NotesGrid,
+  eliminations: CandidateElimination[]
+): NotesGrid {
+  const next = notesContainAnyCandidate(notes) ? cloneNotes(notes) : quickFillNotes(grid);
+
+  for (const elimination of eliminations) {
+    const index = cellToIndex(elimination.cell);
+    if (index < 0 || index > 80 || grid[index] !== null || !DIGITS.includes(elimination.digit as (typeof DIGITS)[number])) {
+      continue;
+    }
+    next[index] = next[index].filter((note) => note !== elimination.digit);
+  }
+
+  return next;
+}
+
+export function notesToCandidatePayload(grid: SudokuGrid, notes: NotesGrid): CandidatePayload | null {
+  if (!notesContainAnyCandidate(notes)) {
+    return null;
+  }
+
+  const validation = validateSudokuGrid(grid);
+  if (!validation.valid) {
+    return null;
+  }
+
+  const payload: CandidatePayload = {};
+  for (const [index, value] of grid.entries()) {
+    if (value !== null) {
+      continue;
+    }
+
+    const legalCandidates = validation.candidates[String(index)] ?? [];
+    const legalCandidateSet = new Set(legalCandidates);
+    const explicitNotes = uniqueSortedDigits(notes[index] ?? []).filter((digit) => legalCandidateSet.has(digit));
+    payload[String(index)] = explicitNotes.length > 0 ? explicitNotes : legalCandidates;
+  }
+
+  return payload;
 }
 
 export function toggleCellNote(notes: NotesGrid, grid: SudokuGrid, index: number, digit: number): NotesGrid {
@@ -254,6 +300,14 @@ function usedDigits(grid: SudokuGrid, index: number): Set<number> {
 
 function cloneNotes(notes: NotesGrid): NotesGrid {
   return Array.from({ length: 81 }, (_, index) => [...(notes[index] ?? [])]);
+}
+
+function notesContainAnyCandidate(notes: NotesGrid): boolean {
+  return notes.some((cellNotes) => cellNotes.length > 0);
+}
+
+function uniqueSortedDigits(values: number[]): number[] {
+  return Array.from(new Set(values.filter((value) => DIGITS.includes(value as (typeof DIGITS)[number])))).sort((left, right) => left - right);
 }
 
 function relatedIndexes(index: number): number[] {
