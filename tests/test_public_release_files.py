@@ -32,7 +32,7 @@ class PublicReleaseFilesTests(unittest.TestCase):
         self.assertIn("scripts/download_digit_model.py", dockerfile)
         self.assertNotIn("ARG INSTALL_MODEL", dockerfile)
         self.assertNotIn("ARG DOWNLOAD_MODEL", dockerfile)
-        self.assertIn("EXPOSE 8000", dockerfile)
+        self.assertIn("EXPOSE 8001", dockerfile)
         self.assertIn("HEALTHCHECK", dockerfile)
         self.assertIn("uvicorn backend.app.main:app", dockerfile)
 

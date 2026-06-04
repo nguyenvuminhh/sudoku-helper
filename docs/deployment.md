@@ -21,7 +21,7 @@ Run it locally on the instance:
 docker run -d \
   --name puzzle-hint-api \
   --restart unless-stopped \
-  -p 127.0.0.1:8000:8000 \
+  -p 127.0.0.1:8001:8001 \
   -e PUZZLE_HINT_CORS_ORIGINS=https://<github-user>.github.io,https://<github-user>.github.io/<repo-name> \
   puzzle-hint-api
 ```
@@ -30,7 +30,7 @@ Expose it through HTTPS with a reverse proxy such as Caddy, nginx plus Certbot, 
 
 ```text
 api.example.com {
-  reverse_proxy 127.0.0.1:8000
+  reverse_proxy 127.0.0.1:8001
 }
 ```
 
@@ -73,12 +73,12 @@ Run backend:
 ```bash
 PUZZLE_HINT_STATIC_DIR= \
 PUZZLE_HINT_CORS_ORIGINS=http://127.0.0.1:3000 \
-python3 -m uvicorn backend.app.main:app --host 127.0.0.1 --port 8000
+python3 -m uvicorn backend.app.main:app --host 127.0.0.1 --port 8001
 ```
 
 Run frontend:
 
 ```bash
 cd frontend
-NEXT_PUBLIC_API_BASE_URL=http://127.0.0.1:8000 npm run dev -- --hostname 127.0.0.1 --port 3000
+NEXT_PUBLIC_API_BASE_URL=http://127.0.0.1:8001 npm run dev -- --hostname 127.0.0.1 --port 3000
 ```

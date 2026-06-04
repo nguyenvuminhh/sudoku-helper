@@ -32,10 +32,10 @@ For production-style serving:
 cd frontend
 npm run build
 cd ..
-python3 -m uvicorn backend.app.main:app --reload
+python3 -m uvicorn backend.app.main:app --host 127.0.0.1 --port 8001 --reload
 ```
 
-Then open `http://127.0.0.1:8000`.
+Then open `http://127.0.0.1:8001`.
 
 ## Public deployment
 
@@ -53,7 +53,7 @@ docker build -t puzzle-hint-api .
 docker run -d \
   --name puzzle-hint-api \
   --restart unless-stopped \
-  -p 127.0.0.1:8000:8000 \
+  -p 127.0.0.1:8001:8001 \
   -e PUZZLE_HINT_CORS_ORIGINS=https://<github-user>.github.io,https://<github-user>.github.io/<repo-name> \
   puzzle-hint-api
 ```
@@ -79,7 +79,7 @@ make be
 make fe
 ```
 
-Run those in two separate terminals. `make be` starts FastAPI on `127.0.0.1:8000` with hot reload and CORS configured in `backend/app/main.py`. `make fe` starts Next.js on `127.0.0.1:3000` and points it at the backend.
+Run those in two separate terminals. `make be` starts FastAPI on `127.0.0.1:8001` with hot reload and CORS configured in `backend/app/main.py`. `make fe` starts Next.js on `127.0.0.1:3000` and points it at the backend.
 
 ## Image Import Pipeline
 
