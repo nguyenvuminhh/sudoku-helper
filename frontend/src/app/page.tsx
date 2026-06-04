@@ -3,6 +3,7 @@
 import {
   AlertTriangle,
   Brain,
+  Check,
   Eraser,
   Eye,
   Grid3X3,
@@ -67,6 +68,7 @@ export default function SudokuTutorPage() {
   const primaryIndexes = useMemo(() => collectHintCells(currentHint, "primary"), [currentHint]);
   const relatedIndexes = useMemo(() => collectHintCells(currentHint, "related"), [currentHint]);
   const eliminationIndexes = useMemo(() => collectHintCells(currentHint, "elimination"), [currentHint]);
+  const hintPreview = useMemo(() => collectHintPreview(currentHint, grid), [currentHint, grid]);
 
   useEffect(() => {
     function handleWindowKeyDown(event: globalThis.KeyboardEvent) {
@@ -94,6 +96,18 @@ export default function SudokuTutorPage() {
 
   function handleDigit(value: number | null) {
     updateGrid(setCellValue(grid, selectedIndex, value));
+  }
+
+  function handleApplyHint() {
+    if (!hintPreview) {
+      return;
+    }
+
+    const cell = indexToCell(hintPreview.index);
+    updateGrid(setCellValue(grid, hintPreview.index, hintPreview.digit));
+    setSelectedIndex(hintPreview.index);
+    setLowConfidence((indexes) => indexes.filter((index) => index !== hintPreview.index));
+    setMessages([`Applied ${hintPreview.digit} at R${cell.row}C${cell.col}. Request another hint when you are ready.`]);
   }
 
   function applyKeyboardValue(value: number | null) {
@@ -189,10 +203,12 @@ export default function SudokuTutorPage() {
                 lowConfidence.includes(index) ? "low-confidence" : "",
                 primaryIndexes.has(index) ? "hint-primary" : "",
                 relatedIndexes.has(index) ? "hint-related" : "",
-                eliminationIndexes.has(index) ? "hint-elimination" : ""
+                eliminationIndexes.has(index) ? "hint-elimination" : "",
+                hintPreview?.index === index ? "hint-preview" : ""
               ]
                 .filter(Boolean)
                 .join(" ");
+              const ariaValue = value ? `, ${value}` : hintPreview?.index === index ? `, suggested ${hintPreview.digit}` : "";
 
               return (
                 <button
@@ -200,10 +216,18 @@ export default function SudokuTutorPage() {
                   key={index}
                   type="button"
                   role="gridcell"
-                  aria-label={`Row ${row + 1}, column ${col + 1}${value ? `, ${value}` : ""}`}
+                  aria-label={`Row ${row + 1}, column ${col + 1}${ariaValue}`}
                   onClick={() => setSelectedIndex(index)}
                 >
-                  {value ? <strong>{value}</strong> : showCandidates && candidateValues.length ? <CandidateMarks values={candidateValues} /> : null}
+                  {value ? (
+                    <strong>{value}</strong>
+                  ) : hintPreview?.index === index ? (
+                    <span className="hint-preview-value" aria-hidden="true">
+                      {hintPreview.digit}
+                    </span>
+                  ) : showCandidates && candidateValues.length ? (
+                    <CandidateMarks values={candidateValues} />
+                  ) : null}
                 </button>
               );
             })}
@@ -260,6 +284,10 @@ export default function SudokuTutorPage() {
                   >
                     {busyLabel === "Finding hint" ? <Loader2 className="spin" size={17} /> : <Lightbulb size={17} />}
                     Hint
+                  </button>
+                  <button type="button" onClick={handleApplyHint} disabled={!hintPreview || Boolean(busyLabel)}>
+                    <Check size={17} />
+                    Apply
                   </button>
                 </div>
               </div>
@@ -388,6 +416,19 @@ function collectHintCells(hint: HintResponse | null, kind: "primary" | "related"
     return new Set(hint.highlights.related_cells.map(cellToIndex));
   }
   return new Set(hint.highlights.eliminations.map((item) => cellToIndex(item.cell)));
+}
+
+function collectHintPreview(hint: HintResponse | null, grid: SudokuGrid): { index: number; digit: number } | null {
+  if (hint?.action.type !== "place" || !hint.action.cell || !hint.action.digit) {
+    return null;
+  }
+
+  const index = cellToIndex(hint.action.cell);
+  if (index < 0 || index > 80 || grid[index] !== null) {
+    return null;
+  }
+
+  return { index, digit: hint.action.digit };
 }
 
 function isEditableTarget(target: EventTarget | null): boolean {

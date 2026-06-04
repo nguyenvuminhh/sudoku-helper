@@ -28,4 +28,21 @@ describe("sudoku tutor layout source", () => {
     expect(pageSource).not.toContain("handleValidate");
     expect(pageSource).not.toContain(">Validate<");
   });
+
+  it("previews place hints on the board before applying them", () => {
+    expect(pageSource).toContain("hintPreview");
+    expect(pageSource).toContain("hint-preview");
+    expect(pageSource).toContain("hint-preview-value");
+  });
+
+  it("keeps hint placement behind an explicit apply button", () => {
+    const hintGroup = pageSource.indexOf('aria-label="Hint controls"');
+    const applyHandler = pageSource.indexOf("handleApplyHint");
+    const applyButton = pageSource.indexOf("onClick={handleApplyHint}");
+    const applyLabel = pageSource.indexOf("Apply", applyButton);
+
+    expect(applyHandler).toBeGreaterThan(-1);
+    expect(applyButton).toBeGreaterThan(hintGroup);
+    expect(applyLabel).toBeGreaterThan(hintGroup);
+  });
 });

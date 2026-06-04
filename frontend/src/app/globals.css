@@ -251,6 +251,18 @@ h2 {
   background: #ffe2dc;
 }
 
+.sudoku-cell.hint-preview {
+  background: #fff4a0;
+}
+
+.hint-preview-value {
+  color: rgba(17, 24, 39, 0.42);
+  font-family: "Iowan Old Style", Georgia, serif;
+  font-size: 2rem;
+  font-weight: 800;
+  line-height: 1;
+}
+
 .candidates {
   color: #2e3b43;
   display: grid;
