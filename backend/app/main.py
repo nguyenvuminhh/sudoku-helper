@@ -12,7 +12,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from backend.app.ocr import recognize_sudoku_image
-from backend.app.sudoku.engine import EngineError, EngineUnavailable, generate_puzzle
+from backend.app.sudoku.engine import EngineError, EngineUnavailable, generate_puzzle, hint_with_engine
 from backend.app.sudoku.grid import candidate_map, parse_candidate_map, parse_grid, validate_grid
 from backend.app.sudoku.solver import next_hint
 
@@ -69,7 +69,12 @@ def create_app(static_dir: Path | None = DEFAULT_STATIC_DIR, cors_origins: list[
                 detail=[{"message": "Grid has conflicts.", "conflicts": validation.conflicts}],
             )
         candidates = _parse_candidates_or_422(grid, payload.candidates) if payload.candidates is not None else None
-        return next_hint(grid, candidates=candidates).to_dict()
+        try:
+            return hint_with_engine(grid, candidates=candidates)
+        except EngineUnavailable:
+            return next_hint(grid, candidates=candidates).to_dict()
+        except EngineError as exc:
+            raise HTTPException(status_code=502, detail=[{"message": str(exc)}]) from exc
 
     @app.post("/api/sudoku/generate")
     def generate(payload: GenerateRequest) -> dict[str, object]:

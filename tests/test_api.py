@@ -47,6 +47,33 @@ class ApiTests(unittest.TestCase):
         self.assertEqual(body["action"]["cell"], {"row": 5, "col": 9})
         self.assertEqual(body["action"]["digit"], 3)
 
+    def test_hint_endpoint_prefers_engine_hint_when_available(self):
+        client = TestClient(create_app(static_dir=None))
+        engine_hint = {
+            "technique": {"id": "x_wing", "name": "X-Wing", "rank": 32},
+            "action": {
+                "type": "eliminate",
+                "cell": None,
+                "digit": None,
+                "eliminations": [{"cell": {"row": 1, "col": 1}, "digit": 2}],
+            },
+            "summary": "Remove 2 from R1C1 using X-Wing.",
+            "explanation": ["Conclusion: remove 2 from R1C1.", "Engine explanation."],
+            "highlights": {
+                "primary_cells": [{"row": 1, "col": 1}],
+                "related_cells": [],
+                "eliminations": [{"cell": {"row": 1, "col": 1}, "digit": 2}],
+            },
+        }
+
+        with patch("backend.app.main.hint_with_engine", return_value=engine_hint):
+            response = client.post("/api/sudoku/hint", json={"grid": REFERENCE_GRID})
+
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        self.assertEqual(body["technique"]["id"], "x_wing")
+        self.assertEqual(body["summary"], "Remove 2 from R1C1 using X-Wing.")
+
     def test_hint_endpoint_uses_candidate_payload_to_skip_applied_elimination(self):
         client = TestClient(create_app(static_dir=None))
         candidates = {
