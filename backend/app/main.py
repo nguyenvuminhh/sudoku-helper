@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from dataclasses import asdict
 from pathlib import Path
 from typing import Any
@@ -22,11 +23,11 @@ class GridRequest(BaseModel):
     grid: str | list[int | str | None]
 
 
-def create_app(static_dir: Path | None = DEFAULT_STATIC_DIR) -> FastAPI:
+def create_app(static_dir: Path | None = DEFAULT_STATIC_DIR, cors_origins: list[str] | None = None) -> FastAPI:
     app = FastAPI(title="Puzzle Hint", version="0.1.0")
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=["*"],
+        allow_origins=cors_origins if cors_origins is not None else _parse_cors_origins(os.getenv("PUZZLE_HINT_CORS_ORIGINS")),
         allow_credentials=False,
         allow_methods=["*"],
         allow_headers=["*"],
@@ -78,6 +79,22 @@ def _parse_or_422(raw_grid: str | list[int | str | None]) -> list[int]:
         raise HTTPException(status_code=422, detail=[{"message": str(exc)}]) from exc
 
 
+def _parse_cors_origins(raw_origins: str | None) -> list[str]:
+    if raw_origins is None or not raw_origins.strip() or raw_origins.strip() == "*":
+        return ["*"]
+    origins = [origin.strip() for origin in raw_origins.split(",") if origin.strip()]
+    return origins or ["*"]
+
+
+def _static_dir_from_env() -> Path | None:
+    raw_static_dir = os.getenv("PUZZLE_HINT_STATIC_DIR")
+    if raw_static_dir is None:
+        return DEFAULT_STATIC_DIR
+    if not raw_static_dir.strip():
+        return None
+    return Path(raw_static_dir)
+
+
 def _mount_frontend(app: FastAPI, static_dir: Path | None) -> None:
     if static_dir is None:
         return
@@ -99,4 +116,4 @@ def _mount_frontend(app: FastAPI, static_dir: Path | None) -> None:
         return FileResponse(index_file)
 
 
-app = create_app()
+app = create_app(static_dir=_static_dir_from_env())

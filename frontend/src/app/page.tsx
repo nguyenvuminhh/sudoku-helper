@@ -4,15 +4,18 @@ import {
   AlertTriangle,
   Brain,
   Check,
+  Crosshair,
   Eraser,
-  Eye,
   Grid3X3,
   History,
   ImageUp,
   Lightbulb,
   Loader2,
+  Pencil,
+  Plus,
   RotateCcw,
-  Sparkles
+  Sparkles,
+  Trash2
 } from "lucide-react";
 import { ChangeEvent, useEffect, useMemo, useRef, useState } from "react";
 
@@ -24,14 +27,23 @@ import {
 import {
   applyOcrCells,
   cellToIndex,
+  collectMatchingDigitHighlights,
   countFilledCells,
+  createEmptyNotes,
   createEmptyGrid,
+  createGivenMask,
   findNextInputIndex,
   indexToCell,
   parsePuzzleText,
+  quickFillNotes,
+  removeAllNotes,
   resolveKeyboardInput,
   setCellValue,
+  setCellValueWithNotes,
+  toggleCellNote,
   validateSudokuGrid,
+  type GivenMask,
+  type NotesGrid,
   type SudokuGrid,
   type ValidationConflict
 } from "../lib/sudoku-state";
@@ -47,8 +59,13 @@ const SAMPLE_PUZZLE =
   "000000420" +
   "900400560";
 
+type TutorPhase = "loading" | "solving";
+
 export default function SudokuTutorPage() {
   const [grid, setGrid] = useState<SudokuGrid>(() => createEmptyGrid());
+  const [notes, setNotes] = useState<NotesGrid>(() => createEmptyNotes());
+  const [givenMask, setGivenMask] = useState<GivenMask>(() => createGivenMask(createEmptyGrid()));
+  const [phase, setPhase] = useState<TutorPhase>("loading");
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [currentHint, setCurrentHint] = useState<HintResponse | null>(null);
   const [history, setHistory] = useState<HintResponse[]>([]);
@@ -57,14 +74,27 @@ export default function SudokuTutorPage() {
     "Enter a puzzle on the board or upload a clean Sudoku screenshot."
   ]);
   const [busyLabel, setBusyLabel] = useState<string | null>(null);
-  const [showCandidates, setShowCandidates] = useState(true);
+  const [editingNotes, setEditingNotes] = useState(false);
+  const [quickFillMode, setQuickFillMode] = useState(false);
+  const [quickFillDigit, setQuickFillDigit] = useState<number | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const filledCount = countFilledCells(grid);
   const selectedCell = indexToCell(selectedIndex);
+  const isSolving = phase === "solving";
+  const selectedIsGiven = isSolving && givenMask[selectedIndex];
+  const selectedNotes = notes[selectedIndex] ?? [];
+  const activeHighlightDigit = quickFillDigit ?? grid[selectedIndex];
   const validation = useMemo(() => validateSudokuGrid(grid), [grid]);
   const statusMessages = validation.valid ? messages : ["Fix the highlighted conflicts before requesting a hint."];
   const conflictIndexes = useMemo(() => collectConflictIndexes(validation.conflicts), [validation]);
+  const matchingHighlights = useMemo(() => {
+    const highlights = collectMatchingDigitHighlights(grid, notes, activeHighlightDigit);
+    return {
+      noteIndexes: new Set(highlights.noteIndexes),
+      valueIndexes: new Set(highlights.valueIndexes)
+    };
+  }, [activeHighlightDigit, grid, notes]);
   const primaryIndexes = useMemo(() => collectHintCells(currentHint, "primary"), [currentHint]);
   const relatedIndexes = useMemo(() => collectHintCells(currentHint, "related"), [currentHint]);
   const eliminationIndexes = useMemo(() => collectHintCells(currentHint, "elimination"), [currentHint]);
@@ -87,15 +117,105 @@ export default function SudokuTutorPage() {
 
     window.addEventListener("keydown", handleWindowKeyDown);
     return () => window.removeEventListener("keydown", handleWindowKeyDown);
-  }, [selectedIndex]);
+  }, [editingNotes, givenMask, grid, notes, phase, quickFillDigit, quickFillMode, selectedIndex]);
 
-  function updateGrid(nextGrid: SudokuGrid) {
+  function updateGrid(nextGrid: SudokuGrid, nextNotes = notes) {
     setGrid(nextGrid);
+    setNotes(nextNotes);
     setCurrentHint(null);
   }
 
   function handleDigit(value: number | null) {
-    updateGrid(setCellValue(grid, selectedIndex, value));
+    if (quickFillMode) {
+      if (value === null) {
+        setQuickFillDigit(null);
+        setMessages(["Quick fill digit cleared."]);
+        return;
+      }
+
+      setQuickFillDigit(value);
+      setMessages([
+        editingNotes
+          ? `Quick fill locked to ${value}. Click empty cells to add or remove that note.`
+          : `Quick fill locked to ${value}. Click editable cells to fill it.`
+      ]);
+      return;
+    }
+
+    if (editingNotes && value !== null) {
+      handleToggleNote(value);
+      return;
+    }
+
+    if (editingNotes && value === null) {
+      clearSelectedNotes();
+      return;
+    }
+
+    applyCellValue(value, true);
+  }
+
+  function handleCellClick(index: number) {
+    setSelectedIndex(index);
+    if (!quickFillMode || quickFillDigit === null) {
+      return;
+    }
+
+    if (editingNotes) {
+      if (grid[index] !== null) {
+        setMessages(["Notes can only be edited on empty cells."]);
+        return;
+      }
+
+      setNotes((currentNotes) => toggleCellNote(currentNotes, grid, index, quickFillDigit));
+      setCurrentHint(null);
+      return;
+    }
+
+    applyCellValueAt(index, quickFillDigit, false);
+  }
+
+  function handleToggleNote(digit: number) {
+    if (!isSolving) {
+      setMessages(["Start solving before editing notes."]);
+      return;
+    }
+    if (grid[selectedIndex] !== null) {
+      setMessages(["Notes can only be edited on empty cells."]);
+      return;
+    }
+
+    setNotes((currentNotes) => toggleCellNote(currentNotes, grid, selectedIndex, digit));
+    setCurrentHint(null);
+  }
+
+  function clearSelectedNotes() {
+    if (!isSolving) {
+      return;
+    }
+
+    setNotes((currentNotes) => currentNotes.map((cellNotes, index) => (index === selectedIndex ? [] : cellNotes)));
+    setCurrentHint(null);
+  }
+
+  function applyCellValue(value: number | null, shouldAdvance: boolean) {
+    applyCellValueAt(selectedIndex, value, shouldAdvance);
+  }
+
+  function applyCellValueAt(index: number, value: number | null, shouldAdvance: boolean) {
+    if (!canEditCellValue(index)) {
+      setMessages(["Loaded cells are locked during solving."]);
+      return;
+    }
+
+    const result = isSolving
+      ? setCellValueWithNotes(grid, notes, index, value)
+      : { grid: setCellValue(grid, index, value), notes };
+    updateGrid(result.grid, result.notes);
+    setLowConfidence((indexes) => indexes.filter((lowConfidenceIndex) => lowConfidenceIndex !== index));
+    if (shouldAdvance && value !== null) {
+      setSelectedIndex(findNextInputIndex(result.grid, index));
+    }
   }
 
   function handleApplyHint() {
@@ -104,22 +224,23 @@ export default function SudokuTutorPage() {
     }
 
     const cell = indexToCell(hintPreview.index);
-    updateGrid(setCellValue(grid, hintPreview.index, hintPreview.digit));
+    const result = setCellValueWithNotes(grid, notes, hintPreview.index, hintPreview.digit);
+    updateGrid(result.grid, result.notes);
     setSelectedIndex(hintPreview.index);
     setLowConfidence((indexes) => indexes.filter((index) => index !== hintPreview.index));
     setMessages([`Applied ${hintPreview.digit} at R${cell.row}C${cell.col}. Request another hint when you are ready.`]);
   }
 
   function applyKeyboardValue(value: number | null) {
-    setGrid((currentGrid) => {
-      const nextGrid = setCellValue(currentGrid, selectedIndex, value);
-      setSelectedIndex(findNextInputIndex(nextGrid, selectedIndex));
-      return nextGrid;
-    });
-    setCurrentHint(null);
+    handleDigit(value);
   }
 
   async function handleHint() {
+    if (!isSolving) {
+      setMessages(["Start solving before requesting a hint."]);
+      return;
+    }
+
     setBusyLabel("Finding hint");
     try {
       const hint = await requestHint(grid);
@@ -133,6 +254,93 @@ export default function SudokuTutorPage() {
     }
   }
 
+  function handleStartSolving() {
+    if (filledCount === 0 || !validation.valid) {
+      return;
+    }
+
+    setPhase("solving");
+    setGivenMask(createGivenMask(grid));
+    setNotes(createEmptyNotes());
+    setEditingNotes(false);
+    setQuickFillMode(false);
+    setQuickFillDigit(null);
+    setCurrentHint(null);
+    setMessages(["Solving phase started. Loaded cells are locked; use notes and hints to work the puzzle."]);
+  }
+
+  function handleQuickFillMode() {
+    if (!isSolving) {
+      setMessages(["Start solving before using quick fill mode."]);
+      return;
+    }
+
+    const nextQuickFillMode = !quickFillMode;
+    setQuickFillMode(nextQuickFillMode);
+    if (!nextQuickFillMode) {
+      setQuickFillDigit(null);
+    }
+    setMessages([
+      nextQuickFillMode
+        ? editingNotes
+          ? "Quick fill enabled for notes. Select a digit, then click empty cells to add or remove that note."
+          : "Quick fill enabled. Select a digit, then click editable cells to fill it."
+        : "Quick fill mode disabled."
+    ]);
+  }
+
+  function handleToggleEditingNotes() {
+    if (!isSolving) {
+      return;
+    }
+
+    const nextEditingNotes = !editingNotes;
+    setEditingNotes(nextEditingNotes);
+    setMessages([
+      nextEditingNotes && quickFillMode
+        ? "Notes and quick fill are both on. Click empty cells to add or remove the locked note."
+        : nextEditingNotes
+          ? "Notes enabled. Select an empty cell, then choose digits to add or remove notes."
+          : quickFillMode
+            ? "Notes disabled. Quick fill will place values in editable cells."
+            : "Notes disabled."
+    ]);
+  }
+
+  function handleQuickFillNotes() {
+    if (!isSolving) {
+      setMessages(["Start solving before filling notes."]);
+      return;
+    }
+
+    setNotes(quickFillNotes(grid));
+    setCurrentHint(null);
+    setMessages(["Filled notes for all empty cells from the current board."]);
+  }
+
+  function handleRemoveAllNotes() {
+    setNotes(removeAllNotes(notes));
+    setCurrentHint(null);
+    setMessages(["Removed all notes."]);
+  }
+
+  function loadPuzzle(nextGrid: SudokuGrid, nextMessages: string[]) {
+    setGrid(nextGrid);
+    setNotes(createEmptyNotes());
+    setGivenMask(createGivenMask(createEmptyGrid()));
+    setPhase("loading");
+    setEditingNotes(false);
+    setQuickFillMode(false);
+    setQuickFillDigit(null);
+    setCurrentHint(null);
+    setHistory([]);
+    setMessages(nextMessages);
+  }
+
+  function canEditCellValue(index: number): boolean {
+    return phase === "loading" || !givenMask[index];
+  }
+
   async function handleUpload(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
     if (!file) {
@@ -143,9 +351,8 @@ export default function SudokuTutorPage() {
     try {
       const result = await recognizeImage(file);
       const applied = applyOcrCells(createEmptyGrid(), result.cells);
-      updateGrid(applied.grid);
+      loadPuzzle(applied.grid, result.warnings);
       setLowConfidence(applied.lowConfidence);
-      setMessages(result.warnings);
     } catch (error) {
       setMessages([error instanceof Error ? error.message : "Image recognition failed."]);
     } finally {
@@ -155,17 +362,13 @@ export default function SudokuTutorPage() {
   }
 
   function loadSample() {
-    updateGrid(parsePuzzleText(SAMPLE_PUZZLE));
+    loadPuzzle(parsePuzzleText(SAMPLE_PUZZLE), ["Loaded a sample puzzle. Review it, then start solving to lock the givens."]);
     setLowConfidence([]);
-    setMessages(["Loaded a sample puzzle with a hidden single available."]);
   }
 
   function resetPuzzle() {
-    setGrid(createEmptyGrid());
-    setCurrentHint(null);
-    setHistory([]);
+    loadPuzzle(createEmptyGrid(), ["Workspace cleared. Start with board entry or image upload."]);
     setLowConfidence([]);
-    setMessages(["Workspace cleared. Start with board entry or image upload."]);
   }
 
   return (
@@ -195,10 +398,15 @@ export default function SudokuTutorPage() {
             {grid.map((value, index) => {
               const row = Math.floor(index / 9);
               const col = index % 9;
-              const candidateValues = validation?.candidates[String(index)] ?? [];
+              const noteValues = notes[index] ?? [];
+              const isGiven = isSolving && givenMask[index];
               const classes = [
                 "sudoku-cell",
                 selectedIndex === index ? "selected" : "",
+                isGiven ? "locked-given" : "",
+                editingNotes && selectedIndex === index ? "note-target" : "",
+                matchingHighlights.valueIndexes.has(index) ? "same-digit-cell" : "",
+                matchingHighlights.noteIndexes.has(index) ? "same-digit-note-cell" : "",
                 conflictIndexes.has(index) ? "conflict" : "",
                 lowConfidence.includes(index) ? "low-confidence" : "",
                 primaryIndexes.has(index) ? "hint-primary" : "",
@@ -208,7 +416,13 @@ export default function SudokuTutorPage() {
               ]
                 .filter(Boolean)
                 .join(" ");
-              const ariaValue = value ? `, ${value}` : hintPreview?.index === index ? `, suggested ${hintPreview.digit}` : "";
+              const ariaValue = value
+                ? `, ${value}${isGiven ? ", loaded clue" : ""}`
+                : hintPreview?.index === index
+                  ? `, suggested ${hintPreview.digit}`
+                  : noteValues.length
+                    ? `, notes ${noteValues.join(" ")}`
+                    : "";
 
               return (
                 <button
@@ -217,7 +431,7 @@ export default function SudokuTutorPage() {
                   type="button"
                   role="gridcell"
                   aria-label={`Row ${row + 1}, column ${col + 1}${ariaValue}`}
-                  onClick={() => setSelectedIndex(index)}
+                  onClick={() => handleCellClick(index)}
                 >
                   {value ? (
                     <strong>{value}</strong>
@@ -225,8 +439,8 @@ export default function SudokuTutorPage() {
                     <span className="hint-preview-value" aria-hidden="true">
                       {hintPreview.digit}
                     </span>
-                  ) : showCandidates && candidateValues.length ? (
-                    <CandidateMarks values={candidateValues} />
+                  ) : noteValues.length ? (
+                    <NoteMarks activeDigit={activeHighlightDigit} values={noteValues} />
                   ) : null}
                 </button>
               );
@@ -235,11 +449,22 @@ export default function SudokuTutorPage() {
 
           <div className="keypad" aria-label="Digit entry">
             {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((digit) => (
-              <button key={digit} type="button" onClick={() => handleDigit(digit)}>
+              <button
+                className={[
+                  editingNotes && selectedNotes.includes(digit) ? "note-active" : "",
+                  quickFillDigit === digit ? "quick-fill-active" : ""
+                ]
+                  .filter(Boolean)
+                  .join(" ")}
+                disabled={quickFillMode ? !isSolving : editingNotes ? !isSolving || grid[selectedIndex] !== null : selectedIsGiven}
+                key={digit}
+                type="button"
+                onClick={() => handleDigit(digit)}
+              >
                 {digit}
               </button>
             ))}
-            <button type="button" onClick={() => handleDigit(null)}>
+            <button type="button" onClick={() => handleDigit(null)} disabled={quickFillMode ? !isSolving : editingNotes ? !isSolving : selectedIsGiven}>
               <Eraser size={16} />
             </button>
           </div>
@@ -247,14 +472,18 @@ export default function SudokuTutorPage() {
 
         <aside className="inspector" aria-label="Hint explanation">
           <div className="actions-panel" aria-label="Sudoku controls">
-            <div className="panel-title">
-              <Grid3X3 size={19} />
-              <h2>Controls</h2>
+            <div className="controls-header">
+              <div className="panel-title">
+                <Grid3X3 size={19} />
+                <h2>Controls</h2>
+              </div>
+              <button className="reset-icon-button" type="button" onClick={resetPuzzle} aria-label="Reset puzzle">
+                <RotateCcw size={17} />
+              </button>
             </div>
             <div className="action-grid">
-              <div className="control-group" aria-label="Game controls">
-                <p className="control-group-title">Game</p>
-                <div className="control-buttons">
+              {phase === "loading" ? (
+                <div className="phase-buttons" aria-label="Loading controls">
                   <button type="button" onClick={loadSample}>
                     <Sparkles size={17} />
                     Sample
@@ -263,21 +492,62 @@ export default function SudokuTutorPage() {
                     <ImageUp size={17} />
                     Upload
                   </button>
-                  <button type="button" onClick={resetPuzzle}>
-                    <RotateCcw size={17} />
-                    Reset
-                  </button>
-                </div>
-              </div>
-              <div className="control-group" aria-label="Hint controls">
-                <p className="control-group-title">Hint</p>
-                <div className="control-buttons">
-                  <button type="button" className={showCandidates ? "toggle active" : "toggle"} onClick={() => setShowCandidates((value) => !value)}>
-                    <Eye size={17} />
-                    Candidates
-                  </button>
                   <button
                     className="primary"
+                    type="button"
+                    onClick={handleStartSolving}
+                    disabled={filledCount === 0 || !validation.valid}
+                  >
+                    <Check size={17} />
+                    Confirm
+                  </button>
+                </div>
+              ) : (
+                <div className="control-stack" aria-label="Solving controls">
+                  <button
+                    type="button"
+                    className={editingNotes ? "switch-row active" : "switch-row"}
+                    onClick={handleToggleEditingNotes}
+                    role="switch"
+                    aria-checked={editingNotes}
+                    aria-label="Notes"
+                  >
+                    <span className="switch-copy">
+                      <Pencil size={17} />
+                      Notes
+                    </span>
+                    <span className="switch-track" aria-hidden="true">
+                      <span className="switch-thumb" />
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    className={quickFillMode ? "switch-row active" : "switch-row"}
+                    onClick={handleQuickFillMode}
+                    role="switch"
+                    aria-checked={quickFillMode}
+                    aria-label="Quick fill"
+                  >
+                    <span className="switch-copy">
+                      <Crosshair size={17} />
+                      Quick fill
+                    </span>
+                    <span className="switch-track" aria-hidden="true">
+                      <span className="switch-thumb" />
+                    </span>
+                  </button>
+                  <div className="note-action-row">
+                    <button type="button" onClick={handleQuickFillNotes} disabled={!validation.valid}>
+                      <Plus size={17} />
+                      Fill all notes
+                    </button>
+                    <button type="button" onClick={handleRemoveAllNotes}>
+                      <Trash2 size={17} />
+                      Remove all notes
+                    </button>
+                  </div>
+                  <button
+                    className="primary hint-action"
                     type="button"
                     onClick={handleHint}
                     disabled={Boolean(busyLabel) || filledCount === 0 || !validation.valid}
@@ -285,12 +555,8 @@ export default function SudokuTutorPage() {
                     {busyLabel === "Finding hint" ? <Loader2 className="spin" size={17} /> : <Lightbulb size={17} />}
                     Hint
                   </button>
-                  <button type="button" onClick={handleApplyHint} disabled={!hintPreview || Boolean(busyLabel)}>
-                    <Check size={17} />
-                    Apply
-                  </button>
                 </div>
-              </div>
+              )}
             </div>
             <input ref={fileInputRef} className="hidden-input" type="file" accept="image/*" onChange={handleUpload} />
           </div>
@@ -309,7 +575,7 @@ export default function SudokuTutorPage() {
             <MessageList messages={statusMessages} />
           </div>
 
-          <HintPanel hint={currentHint} />
+          <HintPanel canApplyHint={Boolean(hintPreview) && !busyLabel} hint={currentHint} onApplyHint={handleApplyHint} />
 
           <div className="history-panel">
             <div className="panel-title">
@@ -335,11 +601,13 @@ export default function SudokuTutorPage() {
   );
 }
 
-function CandidateMarks({ values }: { values: number[] }) {
+function NoteMarks({ activeDigit, values }: { activeDigit: number | null; values: number[] }) {
   return (
-    <span className="candidates" aria-hidden="true">
+    <span className="notes" aria-hidden="true">
       {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((digit) => (
-        <span key={digit}>{values.includes(digit) ? digit : ""}</span>
+        <span className={values.includes(digit) && digit === activeDigit ? "same-digit-note" : ""} key={digit}>
+          {values.includes(digit) ? digit : ""}
+        </span>
       ))}
     </span>
   );
@@ -358,7 +626,15 @@ function MessageList({ messages }: { messages: string[] }) {
   );
 }
 
-function HintPanel({ hint }: { hint: HintResponse | null }) {
+function HintPanel({
+  canApplyHint,
+  hint,
+  onApplyHint
+}: {
+  canApplyHint: boolean;
+  hint: HintResponse | null;
+  onApplyHint: () => void;
+}) {
   if (!hint) {
     return (
       <div className="hint-panel empty">
@@ -373,6 +649,16 @@ function HintPanel({ hint }: { hint: HintResponse | null }) {
 
   return (
     <div className="hint-panel">
+      <div className="hint-panel-header">
+        <div className="panel-title">
+          <Lightbulb size={18} />
+          <h2>Next hint</h2>
+        </div>
+        <button type="button" onClick={onApplyHint} disabled={!canApplyHint}>
+          <Check size={17} />
+          Apply
+        </button>
+      </div>
       <div className="technique-row">
         <span>{hint.technique.name}</span>
         <small>Rank {hint.technique.rank}</small>

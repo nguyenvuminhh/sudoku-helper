@@ -2,12 +2,19 @@ import { describe, expect, it } from "vitest";
 
 import {
   applyOcrCells,
+  collectMatchingDigitHighlights,
+  createEmptyNotes,
   createEmptyGrid,
+  createGivenMask,
   findNextInputIndex,
   gridToPayload,
   parsePuzzleText,
+  quickFillNotes,
+  removeAllNotes,
   resolveKeyboardInput,
   setCellValue,
+  setCellValueWithNotes,
+  toggleCellNote,
   validateSudokuGrid
 } from "./sudoku-state";
 
@@ -84,5 +91,89 @@ describe("sudoku-state", () => {
         expect.objectContaining({ unit: "box", unitNumber: 1, digit: 7 })
       ])
     );
+  });
+
+  it("quick-fills notes from current candidates and skips filled cells", () => {
+    let grid = createEmptyGrid();
+    grid = setCellValue(grid, 0, 1);
+    grid = setCellValue(grid, 9, 2);
+    grid = setCellValue(grid, 10, 3);
+
+    const notes = quickFillNotes(grid);
+
+    expect(notes).toHaveLength(81);
+    expect(notes[0]).toEqual([]);
+    expect(notes[1]).toEqual([4, 5, 6, 7, 8, 9]);
+  });
+
+  it("removes all notes without changing the grid", () => {
+    let grid = createEmptyGrid();
+    grid = setCellValue(grid, 0, 1);
+
+    const notes = removeAllNotes(quickFillNotes(grid));
+
+    expect(grid[0]).toBe(1);
+    expect(notes.every((cellNotes) => cellNotes.length === 0)).toBe(true);
+  });
+
+  it("adds and removes a single note on an empty cell", () => {
+    let grid = createEmptyGrid();
+    grid = setCellValue(grid, 0, 9);
+    let notes = createEmptyNotes();
+
+    notes = toggleCellNote(notes, grid, 1, 5);
+    notes = toggleCellNote(notes, grid, 1, 2);
+    expect(notes[1]).toEqual([2, 5]);
+
+    notes = toggleCellNote(notes, grid, 1, 5);
+    notes = toggleCellNote(notes, grid, 0, 5);
+
+    expect(notes[1]).toEqual([2]);
+    expect(notes[0]).toEqual([]);
+  });
+
+  it("filling a cell prunes notes without adding missing notes", () => {
+    const grid = createEmptyGrid();
+    const notes = createEmptyNotes();
+    notes[0] = [1, 2];
+    notes[1] = [1, 4];
+    notes[9] = [1, 5];
+    notes[40] = [1, 6];
+
+    const result = setCellValueWithNotes(grid, notes, 0, 1);
+
+    expect(result.grid[0]).toBe(1);
+    expect(result.notes[0]).toEqual([]);
+    expect(result.notes[1]).toEqual([4]);
+    expect(result.notes[9]).toEqual([5]);
+    expect(result.notes[40]).toEqual([1, 6]);
+  });
+
+  it("captures filled cells as givens for the solving phase", () => {
+    let grid = createEmptyGrid();
+    grid = setCellValue(grid, 0, 8);
+    grid = setCellValue(grid, 80, 4);
+
+    const givens = createGivenMask(grid);
+
+    expect(givens[0]).toBe(true);
+    expect(givens[1]).toBe(false);
+    expect(givens[80]).toBe(true);
+  });
+
+  it("collects matching filled cells and notes for one active digit", () => {
+    let grid = createEmptyGrid();
+    grid = setCellValue(grid, 0, 5);
+    grid = setCellValue(grid, 10, 5);
+    grid = setCellValue(grid, 80, 8);
+    const notes = createEmptyNotes();
+    notes[1] = [2, 5];
+    notes[2] = [4];
+    notes[79] = [5, 9];
+
+    const highlights = collectMatchingDigitHighlights(grid, notes, 5);
+
+    expect(highlights.valueIndexes).toEqual([0, 10]);
+    expect(highlights.noteIndexes).toEqual([1, 79]);
   });
 });

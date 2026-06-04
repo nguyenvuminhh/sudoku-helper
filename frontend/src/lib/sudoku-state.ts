@@ -1,5 +1,11 @@
 export type CellValue = number | null;
 export type SudokuGrid = CellValue[];
+export type NotesGrid = number[][];
+export type GivenMask = boolean[];
+export type MatchingDigitHighlights = {
+  valueIndexes: number[];
+  noteIndexes: number[];
+};
 
 export type ValidationConflict = {
   unit: "row" | "col" | "box";
@@ -25,6 +31,14 @@ export type OcrCell = {
 
 export function createEmptyGrid(): SudokuGrid {
   return Array.from({ length: 81 }, () => null);
+}
+
+export function createEmptyNotes(): NotesGrid {
+  return Array.from({ length: 81 }, () => []);
+}
+
+export function createGivenMask(grid: SudokuGrid): GivenMask {
+  return grid.map((value) => value !== null);
 }
 
 export function parsePuzzleText(text: string): SudokuGrid {
@@ -61,6 +75,28 @@ export function setCellValue(grid: SudokuGrid, index: number, value: CellValue):
   return next;
 }
 
+export function setCellValueWithNotes(
+  grid: SudokuGrid,
+  notes: NotesGrid,
+  index: number,
+  value: CellValue
+): { grid: SudokuGrid; notes: NotesGrid } {
+  const nextGrid = setCellValue(grid, index, value);
+  if (nextGrid === grid) {
+    return { grid, notes };
+  }
+
+  const nextNotes = cloneNotes(notes);
+  nextNotes[index] = [];
+  if (value !== null) {
+    for (const peer of relatedIndexes(index)) {
+      nextNotes[peer] = nextNotes[peer].filter((note) => note !== value);
+    }
+  }
+
+  return { grid: nextGrid, notes: nextNotes };
+}
+
 export function validateSudokuGrid(grid: SudokuGrid): ValidationResponse {
   const conflicts = collectValidationConflicts(grid);
   return {
@@ -68,6 +104,56 @@ export function validateSudokuGrid(grid: SudokuGrid): ValidationResponse {
     conflicts,
     candidates: conflicts.length === 0 ? collectCandidates(grid) : {}
   };
+}
+
+export function quickFillNotes(grid: SudokuGrid): NotesGrid {
+  const validation = validateSudokuGrid(grid);
+  if (!validation.valid) {
+    return createEmptyNotes();
+  }
+
+  return grid.map((value, index) => (value === null ? [...(validation.candidates[String(index)] ?? [])] : []));
+}
+
+export function removeAllNotes(_notes?: NotesGrid): NotesGrid {
+  return createEmptyNotes();
+}
+
+export function toggleCellNote(notes: NotesGrid, grid: SudokuGrid, index: number, digit: number): NotesGrid {
+  if (index < 0 || index > 80 || !DIGITS.includes(digit as (typeof DIGITS)[number]) || grid[index] !== null) {
+    return notes;
+  }
+
+  const next = cloneNotes(notes);
+  if (next[index].includes(digit)) {
+    next[index] = next[index].filter((note) => note !== digit);
+  } else {
+    next[index] = [...next[index], digit].sort((left, right) => left - right);
+  }
+  return next;
+}
+
+export function collectMatchingDigitHighlights(
+  grid: SudokuGrid,
+  notes: NotesGrid,
+  digit: number | null
+): MatchingDigitHighlights {
+  if (digit === null || !DIGITS.includes(digit as (typeof DIGITS)[number])) {
+    return { valueIndexes: [], noteIndexes: [] };
+  }
+
+  const valueIndexes: number[] = [];
+  const noteIndexes: number[] = [];
+  for (let index = 0; index < 81; index += 1) {
+    if (grid[index] === digit) {
+      valueIndexes.push(index);
+    }
+    if ((notes[index] ?? []).includes(digit)) {
+      noteIndexes.push(index);
+    }
+  }
+
+  return { valueIndexes, noteIndexes };
 }
 
 export function applyOcrCells(
@@ -164,6 +250,10 @@ function collectCandidates(grid: SudokuGrid): Record<string, number[]> {
 
 function usedDigits(grid: SudokuGrid, index: number): Set<number> {
   return new Set(relatedIndexes(index).map((peer) => grid[peer]).filter((value): value is number => value !== null));
+}
+
+function cloneNotes(notes: NotesGrid): NotesGrid {
+  return Array.from({ length: 81 }, (_, index) => [...(notes[index] ?? [])]);
 }
 
 function relatedIndexes(index: number): number[] {

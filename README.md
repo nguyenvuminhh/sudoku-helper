@@ -1,6 +1,6 @@
 # Puzzle Hint
 
-Sudoku-first puzzle hint website with a FastAPI backend and a static Next.js frontend served by FastAPI in production.
+Sudoku-first puzzle hint website with a FastAPI backend and a static Next.js frontend.
 
 ## What is built
 
@@ -9,7 +9,7 @@ Sudoku-first puzzle hint website with a FastAPI backend and a static Next.js fro
 - Correction-first validation for invalid grids and low-confidence OCR cells.
 - Step-by-step hints with technique name, conclusion, layered explanation, highlights, and history.
 - FastAPI API routes under `/api/sudoku/*`.
-- Next.js static export served from `frontend/out` by FastAPI.
+- Next.js static export that can be served by FastAPI or deployed separately.
 
 ## Run locally
 
@@ -36,6 +36,38 @@ python3 -m uvicorn backend.app.main:app --reload
 ```
 
 Then open `http://127.0.0.1:8000`.
+
+## Public deployment
+
+The recommended public deployment is split by responsibility:
+
+- Backend API and OCR on Amazon EC2, preferably behind HTTPS through Caddy, nginx plus Certbot, or an AWS Application Load Balancer.
+- Static frontend on GitHub Pages, built by `.github/workflows/frontend-pages.yml`.
+
+The frontend uses `NEXT_PUBLIC_API_BASE_URL` at build time to call the EC2 backend. Because GitHub Pages is HTTPS, the backend URL should also be HTTPS.
+
+Backend container:
+
+```bash
+docker build -t puzzle-hint-api .
+docker run -d \
+  --name puzzle-hint-api \
+  --restart unless-stopped \
+  -p 127.0.0.1:8000:8000 \
+  -e PUZZLE_HINT_CORS_ORIGINS=https://<github-user>.github.io,https://<github-user>.github.io/<repo-name> \
+  puzzle-hint-api
+```
+
+GitHub Pages repository variables:
+
+```text
+NEXT_PUBLIC_API_BASE_URL=https://api.example.com
+NEXT_PUBLIC_BASE_PATH=/<repo-name>
+```
+
+Leave `NEXT_PUBLIC_BASE_PATH` blank for a user or organization Pages site at `https://<github-user>.github.io/`.
+
+See [docs/deployment.md](docs/deployment.md) for the full EC2 and GitHub Pages checklist.
 
 For frontend-only development against a running FastAPI server:
 

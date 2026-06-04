@@ -1,13 +1,26 @@
+# Python
 __pycache__/
 *.py[cod]
 .pytest_cache/
+.mypy_cache/
 .ruff_cache/
 .venv/
-data/models/
-data/img/
-node_modules/
-.next/
-out/
-tsconfig.tsbuildinfo
+venv/
 
+# Node / Next.js
+frontend/.next/
+frontend/out/
+frontend/node_modules/
+frontend/.env*.local
+frontend/tsconfig.tsbuildinfo
+
+# Local environment and generated data
+.env
+.env.local
+data/img/
+data/models/
+
+# OS/editor noise
 .DS_Store
+.idea/
+.vscode/

@@ -4,7 +4,7 @@ from pathlib import Path
 
 from fastapi.testclient import TestClient
 
-from backend.app.main import create_app
+from backend.app.main import _parse_cors_origins, create_app
 
 
 REFERENCE_GRID = (
@@ -50,6 +50,26 @@ class ApiTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertIn("Sudoku tutor", response.text)
+
+    def test_cors_origins_are_configurable_for_split_frontend_deploy(self):
+        origin = "https://example.github.io"
+        client = TestClient(create_app(static_dir=None, cors_origins=[origin]))
+
+        response = client.options(
+            "/api/health",
+            headers={
+                "Origin": origin,
+                "Access-Control-Request-Method": "GET",
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.headers["access-control-allow-origin"], origin)
+
+    def test_parse_cors_origins_defaults_to_wildcard(self):
+        self.assertEqual(_parse_cors_origins(None), ["*"])
+        self.assertEqual(_parse_cors_origins(""), ["*"])
+        self.assertEqual(_parse_cors_origins("https://one.example, https://two.example"), ["https://one.example", "https://two.example"])
 
 
 if __name__ == "__main__":
