@@ -54,6 +54,48 @@ class PublicReleaseFilesTests(unittest.TestCase):
         self.assertIn("ad8f024d507a52eff99fdd8b5173763487b30a31", cargo_toml)
         self.assertIn("MIT", cargo_toml)
 
+    def test_third_party_notices_cover_runtime_dependencies_and_model(self):
+        notice = (ROOT / "THIRD_PARTY_NOTICES.md").read_text(encoding="utf-8")
+
+        required_strings = [
+            "FastAPI",
+            "Starlette",
+            "Uvicorn",
+            "OpenCV",
+            "NumPy",
+            "Pillow",
+            "pytesseract",
+            "Tesseract OCR",
+            "onnxruntime",
+            "Hugging Face Hub",
+            "onnxmodelzoo/mnist-8",
+            "https://huggingface.co/onnxmodelzoo/mnist-8",
+            "Apache-2.0",
+            "Next.js",
+            "React",
+            "React DOM",
+            "lucide-react",
+            "caniuse-lite",
+            "CC-BY-4.0",
+            "lightningcss",
+            "MPL-2.0",
+            "sharp",
+            "libvips",
+            "LGPL-3.0-or-later",
+            "Ukodus sudoku-core",
+            "legal advice",
+        ]
+
+        for text in required_strings:
+            with self.subTest(text=text):
+                self.assertIn(text, notice)
+
+    def test_readme_links_to_third_party_notices(self):
+        readme = (ROOT / "README.md").read_text(encoding="utf-8")
+
+        self.assertIn("Third-party notices", readme)
+        self.assertIn("THIRD_PARTY_NOTICES.md", readme)
+
     def test_requirements_include_fastapi_testclient_transport(self):
         requirements = (ROOT / "requirements.txt").read_text(encoding="utf-8")
 

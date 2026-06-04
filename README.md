@@ -117,6 +117,12 @@ Tesseract remains only as a fallback if OpenCV grid extraction fails. Users shou
 
 The importer intentionally reads only large given/entered digits. Small candidate notes inside a Sudoku cell are ignored.
 
+## Third-party notices
+
+Puzzle Hint is MIT-licensed. Important third-party runtime, build-time, OCR,
+model, and frontend dependency notices are maintained in
+[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+
 ## Verification
 
 ```bash
