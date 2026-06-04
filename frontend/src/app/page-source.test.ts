@@ -6,10 +6,13 @@ const pageSource = readFileSync(new URL("./page.tsx", import.meta.url), "utf-8")
 const globalStyles = readFileSync(new URL("./globals.css", import.meta.url), "utf-8");
 
 describe("sudoku tutor layout source", () => {
-  it("does not render the 81-character paste import strip", () => {
-    expect(pageSource).not.toContain("pasteText");
-    expect(pageSource).not.toContain("import-strip");
-    expect(pageSource).not.toContain("Paste 81");
+  it("renders an 81-character puzzle loader with row-order instructions", () => {
+    expect(pageSource).toContain("puzzleText");
+    expect(pageSource).toContain("puzzle-loader");
+    expect(pageSource).toContain("81 characters");
+    expect(pageSource).toContain("0 for empty");
+    expect(pageSource).toContain("left to right, top to bottom");
+    expect(pageSource).toContain("handleLoadPuzzleText");
   });
 
   it("places action controls in the right rail before the strategy note", () => {

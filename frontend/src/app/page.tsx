@@ -77,9 +77,11 @@ export default function SudokuTutorPage() {
   const [editingNotes, setEditingNotes] = useState(false);
   const [quickFillMode, setQuickFillMode] = useState(false);
   const [quickFillDigit, setQuickFillDigit] = useState<number | null>(null);
+  const [puzzleText, setPuzzleText] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const filledCount = countFilledCells(grid);
+  const puzzleTextLength = useMemo(() => puzzleText.replace(/[^0-9.]/g, "").length, [puzzleText]);
   const selectedCell = indexToCell(selectedIndex);
   const isSolving = phase === "solving";
   const selectedIsGiven = isSolving && givenMask[selectedIndex];
@@ -324,6 +326,22 @@ export default function SudokuTutorPage() {
     setMessages(["Removed all notes."]);
   }
 
+  function handleLoadPuzzleText() {
+    try {
+      const nextGrid = parsePuzzleText(puzzleText);
+      const nextValidation = validateSudokuGrid(nextGrid);
+      if (!nextValidation.valid) {
+        setMessages(["Pasted puzzle has conflicts. Fix the 81-character string before loading it."]);
+        return;
+      }
+
+      loadPuzzle(nextGrid, ["Loaded 81 characters. Review the board, then confirm to lock the givens."]);
+      setLowConfidence([]);
+    } catch (error) {
+      setMessages([error instanceof Error ? error.message : "Puzzle text could not be loaded."]);
+    }
+  }
+
   function loadPuzzle(nextGrid: SudokuGrid, nextMessages: string[]) {
     setGrid(nextGrid);
     setNotes(createEmptyNotes());
@@ -483,24 +501,46 @@ export default function SudokuTutorPage() {
             </div>
             <div className="action-grid">
               {phase === "loading" ? (
-                <div className="phase-buttons" aria-label="Loading controls">
-                  <button type="button" onClick={loadSample}>
-                    <Sparkles size={17} />
-                    Sample
-                  </button>
-                  <button type="button" onClick={() => fileInputRef.current?.click()}>
-                    <ImageUp size={17} />
-                    Upload
-                  </button>
-                  <button
-                    className="primary"
-                    type="button"
-                    onClick={handleStartSolving}
-                    disabled={filledCount === 0 || !validation.valid}
-                  >
-                    <Check size={17} />
-                    Confirm
-                  </button>
+                <div className="loading-stack">
+                  <div className="puzzle-loader">
+                    <label htmlFor="puzzle-text">81-character puzzle</label>
+                    <textarea
+                      id="puzzle-text"
+                      value={puzzleText}
+                      onChange={(event) => setPuzzleText(event.target.value)}
+                      placeholder="530070000600195000..."
+                      rows={4}
+                      aria-describedby="puzzle-text-help puzzle-text-count"
+                    />
+                    <div className="puzzle-loader-footer">
+                      <p id="puzzle-text-help">Fill left to right, top to bottom. Use 0 for empty cells.</p>
+                      <span id="puzzle-text-count" aria-label={`${puzzleTextLength} of 81 characters`}>
+                        {puzzleTextLength}/81
+                      </span>
+                    </div>
+                    <button type="button" onClick={handleLoadPuzzleText}>
+                      Load puzzle
+                    </button>
+                  </div>
+                  <div className="phase-buttons" aria-label="Loading controls">
+                    <button type="button" onClick={loadSample}>
+                      <Sparkles size={17} />
+                      Sample
+                    </button>
+                    <button type="button" onClick={() => fileInputRef.current?.click()}>
+                      <ImageUp size={17} />
+                      Upload
+                    </button>
+                    <button
+                      className="primary"
+                      type="button"
+                      onClick={handleStartSolving}
+                      disabled={filledCount === 0 || !validation.valid}
+                    >
+                      <Check size={17} />
+                      Confirm
+                    </button>
+                  </div>
                 </div>
               ) : (
                 <div className="control-stack" aria-label="Solving controls">
