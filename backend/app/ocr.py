@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
+from functools import lru_cache
 from io import BytesIO
 from pathlib import Path
 from typing import Protocol
@@ -123,6 +124,7 @@ def extract_sudoku_cells(image_bytes: bytes) -> list[ExtractedCell]:
     return extracted
 
 
+@lru_cache(maxsize=1)
 def load_digit_classifier() -> DigitClassifier:
     model_path = os.getenv("SUDOKU_DIGIT_MODEL")
     if model_path:

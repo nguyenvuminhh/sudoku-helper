@@ -12,6 +12,10 @@ from backend.app.ocr import (
 
 
 class OcrTests(unittest.TestCase):
+    def setUp(self):
+        if hasattr(load_digit_classifier, "cache_clear"):
+            load_digit_classifier.cache_clear()
+
     def test_recognize_sudoku_image_returns_editable_grid_shape(self):
         result = recognize_sudoku_image(b"not-a-real-image", "bad-upload.txt")
 
@@ -91,6 +95,18 @@ class OcrTests(unittest.TestCase):
             load_digit_classifier()
 
         classifier.assert_called_once_with("/tmp/model.onnx")
+
+    def test_load_digit_classifier_reuses_classifier_instance(self):
+        with (
+            patch("backend.app.ocr.Path.exists", return_value=True),
+            patch("backend.app.ocr.OnnxDigitClassifier", side_effect=[object(), object()]) as classifier,
+            patch.dict("os.environ", {}, clear=True),
+        ):
+            first = load_digit_classifier()
+            second = load_digit_classifier()
+
+        self.assertIs(first, second)
+        classifier.assert_called_once_with(default_digit_model_path())
 
     def test_onnx_classifier_can_use_probability_like_model(self):
         class FakeTensor:
