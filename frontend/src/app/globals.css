@@ -34,6 +34,7 @@ body {
 
 button,
 input,
+select,
 textarea {
   font: inherit;
 }
@@ -429,9 +430,45 @@ h2 {
 }
 
 .loading-stack,
+.puzzle-generator,
 .puzzle-loader {
   display: grid;
   gap: 10px;
+}
+
+.puzzle-generator {
+  background: #f5f7f2;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 10px;
+}
+
+.puzzle-generator label {
+  color: var(--ink);
+  font-size: 0.86rem;
+  font-weight: 800;
+}
+
+.generator-row {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: minmax(0, 1fr) minmax(124px, auto);
+}
+
+.level-select {
+  appearance: none;
+  background: #fffef8;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--ink);
+  min-height: 38px;
+  padding: 0.55rem 0.65rem;
+}
+
+.level-select:focus {
+  border-color: var(--teal);
+  box-shadow: 0 0 0 3px rgba(8, 127, 131, 0.16);
+  outline: none;
 }
 
 .puzzle-loader {

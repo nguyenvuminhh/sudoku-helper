@@ -20,8 +20,10 @@ import {
 import { ChangeEvent, useEffect, useMemo, useRef, useState } from "react";
 
 import {
+  requestGeneratedPuzzle,
   recognizeImage,
   requestHint,
+  type GeneratedPuzzleResponse,
   type HintResponse
 } from "../lib/api";
 import {
@@ -60,6 +62,15 @@ const SAMPLE_PUZZLE =
   "900400560";
 
 type TutorPhase = "loading" | "solving";
+type GeneratedLevel = "easy" | "medium" | "hard" | "expert" | "master";
+
+const GENERATED_LEVELS: Array<{ id: GeneratedLevel; label: string }> = [
+  { id: "easy", label: "Easy" },
+  { id: "medium", label: "Medium" },
+  { id: "hard", label: "Hard" },
+  { id: "expert", label: "Expert" },
+  { id: "master", label: "Master" }
+];
 
 export default function SudokuTutorPage() {
   const [grid, setGrid] = useState<SudokuGrid>(() => createEmptyGrid());
@@ -78,6 +89,7 @@ export default function SudokuTutorPage() {
   const [quickFillMode, setQuickFillMode] = useState(false);
   const [quickFillDigit, setQuickFillDigit] = useState<number | null>(null);
   const [puzzleText, setPuzzleText] = useState("");
+  const [generatedLevel, setGeneratedLevel] = useState<GeneratedLevel>("easy");
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const filledCount = countFilledCells(grid);
@@ -342,6 +354,21 @@ export default function SudokuTutorPage() {
     }
   }
 
+  async function handleGeneratePuzzle() {
+    setBusyLabel("Generating puzzle");
+    try {
+      const generated = await requestGeneratedPuzzle(generatedLevel);
+      const nextGrid = parsePuzzleText(generated.puzzle);
+      loadPuzzle(nextGrid, [generatedPuzzleMessage(generated)]);
+      setPuzzleText(generated.puzzle);
+      setLowConfidence([]);
+    } catch (error) {
+      setMessages([error instanceof Error ? error.message : "Puzzle generation failed."]);
+    } finally {
+      setBusyLabel(null);
+    }
+  }
+
   function loadPuzzle(nextGrid: SudokuGrid, nextMessages: string[]) {
     setGrid(nextGrid);
     setNotes(createEmptyNotes());
@@ -502,6 +529,27 @@ export default function SudokuTutorPage() {
             <div className="action-grid">
               {phase === "loading" ? (
                 <div className="loading-stack">
+                  <div className="puzzle-generator">
+                    <label htmlFor="generated-level">Generate puzzle</label>
+                    <div className="generator-row">
+                      <select
+                        id="generated-level"
+                        className="level-select"
+                        value={generatedLevel}
+                        onChange={(event) => setGeneratedLevel(event.target.value as GeneratedLevel)}
+                      >
+                        {GENERATED_LEVELS.map((level) => (
+                          <option key={level.id} value={level.id}>
+                            {level.label}
+                          </option>
+                        ))}
+                      </select>
+                      <button type="button" onClick={handleGeneratePuzzle} disabled={busyLabel === "Generating puzzle"}>
+                        {busyLabel === "Generating puzzle" ? <Loader2 className="spin" size={17} /> : <Sparkles size={17} />}
+                        Generate
+                      </button>
+                    </div>
+                  </div>
                   <div className="puzzle-loader">
                     <label htmlFor="puzzle-text">81-character puzzle</label>
                     <textarea
@@ -755,6 +803,13 @@ function collectHintPreview(hint: HintResponse | null, grid: SudokuGrid): { inde
   }
 
   return { index, digit: hint.action.digit };
+}
+
+function generatedPuzzleMessage(generated: GeneratedPuzzleResponse): string {
+  const requested = generated.requested_level.name;
+  const rated = generated.level.name;
+  const seRating = generated.se_rating ? `, SE ${generated.se_rating.toFixed(1)}` : "";
+  return `Generated ${requested} puzzle. Rated ${rated}${seRating} by ${generated.attribution.name}. Review it, then confirm to lock the givens.`;
 }
 
 function isEditableTarget(target: EventTarget | null): boolean {

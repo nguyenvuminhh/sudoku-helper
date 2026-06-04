@@ -1,9 +1,11 @@
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from fastapi.testclient import TestClient
 
+from backend.app.sudoku.engine import Attribution, DifficultyLevel, GeneratedPuzzle
 from backend.app.main import _parse_cors_origins, create_app
 
 
@@ -39,6 +41,38 @@ class ApiTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 422)
         self.assertIn("conflicts", response.json()["detail"][0])
+
+    def test_generate_endpoint_returns_rated_puzzle(self):
+        client = TestClient(create_app(static_dir=None))
+        generated = GeneratedPuzzle(
+            puzzle="0" * 80 + "1",
+            solution="1" * 81,
+            level=DifficultyLevel.for_id("expert"),
+            requested_level=DifficultyLevel.for_id("expert"),
+            se_rating=4.7,
+            techniques=["x_wing", "hidden_rectangle"],
+            technique_profile={"x_wing": 1, "hidden_rectangle": 1},
+            attribution=Attribution.ukodus(),
+        )
+
+        with patch("backend.app.main.generate_puzzle", return_value=generated):
+            response = client.post("/api/sudoku/generate", json={"level": "expert", "seed": 11})
+
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        self.assertEqual(body["level"]["id"], "expert")
+        self.assertEqual(len(body["puzzle"]), 81)
+        self.assertEqual(len(body["solution"]), 81)
+        self.assertTrue(body["techniques"])
+        self.assertEqual(body["attribution"]["name"], "Ukodus sudoku-core")
+
+    def test_generate_endpoint_reports_missing_engine(self):
+        client = TestClient(create_app(static_dir=None))
+
+        response = client.post("/api/sudoku/generate", json={"level": "easy", "seed": 11})
+
+        self.assertEqual(response.status_code, 503)
+        self.assertIn("engine", response.json()["detail"][0]["message"].lower())
 
     def test_create_app_serves_static_frontend_build(self):
         with tempfile.TemporaryDirectory() as tmp:

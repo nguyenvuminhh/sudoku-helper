@@ -1,9 +1,19 @@
+FROM rust:1.85-slim AS sudoku_engine_builder
+
+WORKDIR /engine
+
+COPY tools/sudoku-engine-cli/Cargo.toml ./Cargo.toml
+COPY tools/sudoku-engine-cli/src ./src
+
+RUN cargo build --release
+
 FROM python:3.12-slim AS runtime
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PORT=8001 \
-    PUZZLE_HINT_STATIC_DIR=
+    PUZZLE_HINT_STATIC_DIR= \
+    SUDOKU_ENGINE_BIN=/app/bin/sudoku-engine
 
 WORKDIR /app
 
@@ -21,6 +31,7 @@ RUN python -m pip install --no-cache-dir --upgrade pip \
 
 COPY backend ./backend
 COPY scripts ./scripts
+COPY --from=sudoku_engine_builder /engine/target/release/puzzle-hint-sudoku-engine ./bin/sudoku-engine
 
 RUN python scripts/download_digit_model.py
 

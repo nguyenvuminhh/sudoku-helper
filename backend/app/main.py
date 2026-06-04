@@ -12,6 +12,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from backend.app.ocr import recognize_sudoku_image
+from backend.app.sudoku.engine import EngineError, EngineUnavailable, generate_puzzle
 from backend.app.sudoku.grid import candidate_map, parse_grid, validate_grid
 from backend.app.sudoku.solver import next_hint
 
@@ -21,6 +22,11 @@ DEFAULT_STATIC_DIR = PROJECT_ROOT / "frontend" / "out"
 
 class GridRequest(BaseModel):
     grid: str | list[int | str | None]
+
+
+class GenerateRequest(BaseModel):
+    level: str
+    seed: int | None = None
 
 
 def create_app(static_dir: Path | None = DEFAULT_STATIC_DIR, cors_origins: list[str] | None = None) -> FastAPI:
@@ -62,6 +68,17 @@ def create_app(static_dir: Path | None = DEFAULT_STATIC_DIR, cors_origins: list[
                 detail=[{"message": "Grid has conflicts.", "conflicts": validation.conflicts}],
             )
         return next_hint(grid).to_dict()
+
+    @app.post("/api/sudoku/generate")
+    def generate(payload: GenerateRequest) -> dict[str, object]:
+        try:
+            return generate_puzzle(payload.level, seed=payload.seed).to_dict()
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=[{"message": str(exc)}]) from exc
+        except EngineUnavailable as exc:
+            raise HTTPException(status_code=503, detail=[{"message": str(exc)}]) from exc
+        except EngineError as exc:
+            raise HTTPException(status_code=502, detail=[{"message": str(exc)}]) from exc
 
     @app.post("/api/sudoku/ocr")
     async def ocr(file: UploadFile = File(...)) -> dict[str, object]:

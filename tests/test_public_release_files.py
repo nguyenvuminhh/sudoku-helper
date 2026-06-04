@@ -15,6 +15,8 @@ class PublicReleaseFilesTests(unittest.TestCase):
             "frontend/.env.example",
             ".github/workflows/ci.yml",
             ".github/workflows/frontend-pages.yml",
+            "THIRD_PARTY_NOTICES.md",
+            "tools/sudoku-engine-cli/Cargo.toml",
         ]
 
         for relative_path in required_paths:
@@ -27,12 +29,30 @@ class PublicReleaseFilesTests(unittest.TestCase):
         self.assertIn("FROM python:", dockerfile)
         self.assertIn("requirements.txt", dockerfile)
         self.assertIn("requirements-model.txt", dockerfile)
+        self.assertIn("FROM rust:", dockerfile)
+        self.assertIn("tools/sudoku-engine-cli", dockerfile)
+        self.assertIn("SUDOKU_ENGINE_BIN=/app/bin/sudoku-engine", dockerfile)
+        self.assertIn("COPY --from=sudoku_engine_builder", dockerfile)
         self.assertIn("scripts/download_digit_model.py", dockerfile)
         self.assertNotIn("ARG INSTALL_MODEL", dockerfile)
         self.assertNotIn("ARG DOWNLOAD_MODEL", dockerfile)
         self.assertIn("EXPOSE 8001", dockerfile)
         self.assertIn("HEALTHCHECK", dockerfile)
         self.assertIn("uvicorn backend.app.main:app", dockerfile)
+
+    def test_ci_builds_sudoku_engine_cli(self):
+        workflow = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
+
+        self.assertIn("actions-rust-lang/setup-rust-toolchain", workflow)
+        self.assertIn("cargo build --manifest-path tools/sudoku-engine-cli/Cargo.toml --release", workflow)
+
+    def test_sudoku_engine_cli_pins_ukodus_source(self):
+        cargo_toml = (ROOT / "tools" / "sudoku-engine-cli" / "Cargo.toml").read_text(encoding="utf-8")
+
+        self.assertIn("sudoku-core", cargo_toml)
+        self.assertIn("https://github.com/kcirtapfromspace/sudoku-core", cargo_toml)
+        self.assertIn("ad8f024d507a52eff99fdd8b5173763487b30a31", cargo_toml)
+        self.assertIn("MIT", cargo_toml)
 
     def test_requirements_include_fastapi_testclient_transport(self):
         requirements = (ROOT / "requirements.txt").read_text(encoding="utf-8")

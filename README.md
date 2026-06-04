@@ -8,6 +8,7 @@ Sudoku-first puzzle hint website with a FastAPI backend and a static Next.js fro
 - Keyboard entry for the board: `1`-`9` fill cells, and `Space`, `Backspace`, `Delete`, or `0` clear cells.
 - Correction-first validation for invalid grids and low-confidence OCR cells.
 - Step-by-step hints with technique name, conclusion, layered explanation, highlights, and history.
+- Level-based puzzle generation backed by the Ukodus `sudoku-core` engine.
 - FastAPI API routes under `/api/sudoku/*`.
 - Next.js static export that can be served by FastAPI or deployed separately.
 
@@ -57,6 +58,11 @@ docker run -d \
   -e PUZZLE_HINT_CORS_ORIGINS=https://<github-user>.github.io,https://<github-user>.github.io/<repo-name> \
   puzzle-hint-api
 ```
+
+The backend image uses a multi-stage Docker build: Rust compiles the local
+`tools/sudoku-engine-cli` wrapper, then the Python runtime image copies only the
+compiled `sudoku-engine` binary. Bare-metal backend runs need that binary at
+`bin/sudoku-engine` or `SUDOKU_ENGINE_BIN=/path/to/sudoku-engine`.
 
 GitHub Pages repository variables:
 

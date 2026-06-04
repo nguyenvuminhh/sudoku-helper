@@ -26,10 +26,40 @@ export type OcrResponse = {
   warnings: string[];
 };
 
+export type GeneratedPuzzleResponse = {
+  puzzle: string;
+  solution: string;
+  level: {
+    id: string;
+    name: string;
+    description: string;
+    techniques: string[];
+  };
+  requested_level: {
+    id: string;
+    name: string;
+    description: string;
+    techniques: string[];
+  };
+  se_rating: number;
+  techniques: string[];
+  technique_profile: Record<string, number>;
+  attribution: {
+    name: string;
+    url: string;
+    license: string;
+    copyright: string;
+  };
+};
+
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "";
 
 export async function requestHint(grid: SudokuGrid): Promise<HintResponse> {
   return postJson<HintResponse>(`${API_BASE_URL}/api/sudoku/hint`, { grid: gridToPayload(grid) });
+}
+
+export async function requestGeneratedPuzzle(level: string): Promise<GeneratedPuzzleResponse> {
+  return postJson<GeneratedPuzzleResponse>(`${API_BASE_URL}/api/sudoku/generate`, { level });
 }
 
 export async function recognizeImage(file: File): Promise<OcrResponse> {

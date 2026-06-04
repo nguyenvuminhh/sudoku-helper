@@ -15,6 +15,20 @@ describe("sudoku tutor layout source", () => {
     expect(pageSource).toContain("handleLoadPuzzleText");
   });
 
+  it("renders level-based puzzle generation controls in the loading rail", () => {
+    expect(pageSource).toContain("requestGeneratedPuzzle");
+    expect(pageSource).toContain("generatedLevel");
+    expect(pageSource).toContain("handleGeneratePuzzle");
+    expect(pageSource).toContain("Generate");
+    expect(pageSource).toContain("Easy");
+    expect(pageSource).toContain("Medium");
+    expect(pageSource).toContain("Hard");
+    expect(pageSource).toContain("Expert");
+    expect(pageSource).toContain("Master");
+    expect(globalStyles).toContain(".puzzle-generator");
+    expect(globalStyles).toContain(".level-select");
+  });
+
   it("places action controls in the right rail before the strategy note", () => {
     const actionsPanel = pageSource.indexOf('className="actions-panel"');
     const strategyPanel = pageSource.indexOf('className="status-panel"');
