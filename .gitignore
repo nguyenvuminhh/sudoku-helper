@@ -24,3 +24,5 @@ data/models/
 .DS_Store
 .idea/
 .vscode/
+
+__local/
