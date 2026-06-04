@@ -40,12 +40,10 @@ Then verify:
 curl https://api.example.com/api/health
 ```
 
-For better OCR accuracy, build with the optional ONNX runtime and downloaded MNIST model:
+For better OCR accuracy, build the image with the ONNX runtime and downloaded MNIST model included:
 
 ```bash
 docker build \
-  --build-arg INSTALL_MODEL=true \
-  --build-arg DOWNLOAD_MODEL=true \
   -t puzzle-hint-api .
 ```
 

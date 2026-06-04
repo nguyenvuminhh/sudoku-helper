@@ -15,19 +15,14 @@ RUN apt-get update \
 
 COPY requirements.txt requirements-model.txt ./
 
-ARG INSTALL_MODEL=false
 RUN python -m pip install --no-cache-dir --upgrade pip \
     && python -m pip install --no-cache-dir -r requirements.txt \
-    && if [ "$INSTALL_MODEL" = "true" ]; then python -m pip install --no-cache-dir -r requirements-model.txt; fi
+    && python -m pip install --no-cache-dir -r requirements-model.txt
 
 COPY backend ./backend
 COPY scripts ./scripts
 
-ARG DOWNLOAD_MODEL=false
-RUN if [ "$DOWNLOAD_MODEL" = "true" ]; then \
-        python -m pip install --no-cache-dir -r requirements-model.txt \
-        && python scripts/download_digit_model.py; \
-    fi
+RUN python scripts/download_digit_model.py
 
 RUN useradd --create-home --shell /usr/sbin/nologin appuser \
     && chown -R appuser:appuser /app
