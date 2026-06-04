@@ -67,8 +67,6 @@ NEXT_PUBLIC_BASE_PATH=/<repo-name>
 
 Leave `NEXT_PUBLIC_BASE_PATH` blank for a user or organization Pages site at `https://<github-user>.github.io/`.
 
-See [docs/deployment.md](docs/deployment.md) for the full EC2 and GitHub Pages checklist.
-
 For frontend-only development against a running FastAPI server:
 
 ```bash

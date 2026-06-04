@@ -12,11 +12,9 @@ class PublicReleaseFilesTests(unittest.TestCase):
             ".gitignore",
             ".dockerignore",
             "Dockerfile",
-            ".env.example",
             "frontend/.env.example",
             ".github/workflows/ci.yml",
             ".github/workflows/frontend-pages.yml",
-            "docs/deployment.md",
         ]
 
         for relative_path in required_paths:
@@ -35,6 +33,11 @@ class PublicReleaseFilesTests(unittest.TestCase):
         self.assertIn("EXPOSE 8001", dockerfile)
         self.assertIn("HEALTHCHECK", dockerfile)
         self.assertIn("uvicorn backend.app.main:app", dockerfile)
+
+    def test_requirements_include_fastapi_testclient_transport(self):
+        requirements = (ROOT / "requirements.txt").read_text(encoding="utf-8")
+
+        self.assertRegex(requirements, r"(?m)^httpx[<>=]")
 
     def test_frontend_pages_workflow_builds_static_export_with_api_base_url(self):
         workflow = (ROOT / ".github" / "workflows" / "frontend-pages.yml").read_text(encoding="utf-8")
