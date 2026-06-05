@@ -15,7 +15,8 @@ import {
   Plus,
   RotateCcw,
   Sparkles,
-  Trash2
+  Trash2,
+  Undo2
 } from "lucide-react";
 import { ChangeEvent, useEffect, useMemo, useRef, useState } from "react";
 
@@ -32,6 +33,7 @@ import {
   cellToIndex,
   collectMatchingDigitHighlights,
   countFilledCells,
+  createBoardSnapshot,
   createEmptyNotes,
   createEmptyGrid,
   createGivenMask,
@@ -41,10 +43,13 @@ import {
   quickFillNotes,
   removeAllNotes,
   resolveKeyboardInput,
+  restoreUndoSnapshot,
   setCellValue,
   setCellValueWithNotes,
   toggleCellNote,
   validateSudokuGrid,
+  pushUndoSnapshot,
+  type BoardSnapshot,
   type GivenMask,
   type NotesGrid,
   type SudokuGrid,
@@ -81,6 +86,7 @@ export default function SudokuTutorPage() {
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [currentHint, setCurrentHint] = useState<HintResponse | null>(null);
   const [history, setHistory] = useState<HintResponse[]>([]);
+  const [undoStack, setUndoStack] = useState<BoardSnapshot[]>([]);
   const [lowConfidence, setLowConfidence] = useState<number[]>([]);
   const [messages, setMessages] = useState<string[]>([
     "Enter a puzzle on the board or upload a clean Sudoku screenshot."
@@ -135,7 +141,30 @@ export default function SudokuTutorPage() {
 
     window.addEventListener("keydown", handleWindowKeyDown);
     return () => window.removeEventListener("keydown", handleWindowKeyDown);
-  }, [editingNotes, givenMask, grid, notes, phase, quickFillDigit, quickFillMode, selectedIndex]);
+  }, [editingNotes, givenMask, grid, lowConfidence, notes, phase, quickFillDigit, quickFillMode, selectedIndex]);
+
+  function recordUndoSnapshot() {
+    setUndoStack((items) => pushUndoSnapshot(items, createBoardSnapshot(grid, notes, selectedIndex, lowConfidence)));
+  }
+
+  function handleUndo() {
+    const restored = restoreUndoSnapshot(undoStack);
+    if (!restored.snapshot) {
+      return;
+    }
+
+    setGrid(restored.snapshot.grid);
+    setNotes(restored.snapshot.notes);
+    setSelectedIndex(restored.snapshot.selectedIndex);
+    setLowConfidence(restored.snapshot.lowConfidence);
+    setUndoStack(restored.stack);
+    setCurrentHint(null);
+    setMessages(["Undid the last board change."]);
+  }
+
+  function hasBoardStateChanged(nextGrid: SudokuGrid, nextNotes: NotesGrid, nextLowConfidence = lowConfidence): boolean {
+    return !sameGrid(grid, nextGrid) || !sameNotes(notes, nextNotes) || !sameNumberList(lowConfidence, nextLowConfidence);
+  }
 
   function updateGrid(nextGrid: SudokuGrid, nextNotes = notes) {
     setGrid(nextGrid);
@@ -185,7 +214,11 @@ export default function SudokuTutorPage() {
         return;
       }
 
-      setNotes((currentNotes) => toggleCellNote(currentNotes, grid, index, quickFillDigit));
+      const nextNotes = toggleCellNote(notes, grid, index, quickFillDigit);
+      if (hasBoardStateChanged(grid, nextNotes)) {
+        recordUndoSnapshot();
+      }
+      setNotes(nextNotes);
       setCurrentHint(null);
       return;
     }
@@ -203,7 +236,11 @@ export default function SudokuTutorPage() {
       return;
     }
 
-    setNotes((currentNotes) => toggleCellNote(currentNotes, grid, selectedIndex, digit));
+    const nextNotes = toggleCellNote(notes, grid, selectedIndex, digit);
+    if (hasBoardStateChanged(grid, nextNotes)) {
+      recordUndoSnapshot();
+    }
+    setNotes(nextNotes);
     setCurrentHint(null);
   }
 
@@ -212,7 +249,11 @@ export default function SudokuTutorPage() {
       return;
     }
 
-    setNotes((currentNotes) => currentNotes.map((cellNotes, index) => (index === selectedIndex ? [] : cellNotes)));
+    const nextNotes = notes.map((cellNotes, index) => (index === selectedIndex ? [] : cellNotes));
+    if (hasBoardStateChanged(grid, nextNotes)) {
+      recordUndoSnapshot();
+    }
+    setNotes(nextNotes);
     setCurrentHint(null);
   }
 
@@ -229,8 +270,12 @@ export default function SudokuTutorPage() {
     const result = isSolving
       ? setCellValueWithNotes(grid, notes, index, value)
       : { grid: setCellValue(grid, index, value), notes };
+    const nextLowConfidence = lowConfidence.filter((lowConfidenceIndex) => lowConfidenceIndex !== index);
+    if (isSolving && hasBoardStateChanged(result.grid, result.notes, nextLowConfidence)) {
+      recordUndoSnapshot();
+    }
     updateGrid(result.grid, result.notes);
-    setLowConfidence((indexes) => indexes.filter((lowConfidenceIndex) => lowConfidenceIndex !== index));
+    setLowConfidence(nextLowConfidence);
     if (shouldAdvance && value !== null) {
       setSelectedIndex(findNextInputIndex(result.grid, index));
     }
@@ -244,9 +289,13 @@ export default function SudokuTutorPage() {
     if (hintPreview) {
       const cell = indexToCell(hintPreview.index);
       const result = setCellValueWithNotes(grid, notes, hintPreview.index, hintPreview.digit);
+      const nextLowConfidence = lowConfidence.filter((index) => index !== hintPreview.index);
+      if (hasBoardStateChanged(result.grid, result.notes, nextLowConfidence)) {
+        recordUndoSnapshot();
+      }
       updateGrid(result.grid, result.notes);
       setSelectedIndex(hintPreview.index);
-      setLowConfidence((indexes) => indexes.filter((index) => index !== hintPreview.index));
+      setLowConfidence(nextLowConfidence);
       setMessages([`Applied ${hintPreview.digit} at R${cell.row}C${cell.col}. Request another hint when you are ready.`]);
       return;
     }
@@ -254,6 +303,9 @@ export default function SudokuTutorPage() {
     if (currentHint.action.type === "eliminate" && currentHint.action.eliminations.length > 0) {
       const nextNotes = applyHintEliminationsToNotes(grid, notes, currentHint.action.eliminations);
       const firstCell = currentHint.action.eliminations[0].cell;
+      if (hasBoardStateChanged(grid, nextNotes)) {
+        recordUndoSnapshot();
+      }
       updateGrid(grid, nextNotes);
       setSelectedIndex(cellToIndex(firstCell));
       setMessages([
@@ -297,6 +349,7 @@ export default function SudokuTutorPage() {
     setQuickFillMode(false);
     setQuickFillDigit(null);
     setCurrentHint(null);
+    setUndoStack([]);
     setMessages(["Solving phase started. Loaded cells are locked; use notes and hints to work the puzzle."]);
   }
 
@@ -344,13 +397,21 @@ export default function SudokuTutorPage() {
       return;
     }
 
-    setNotes(quickFillNotes(grid));
+    const nextNotes = quickFillNotes(grid);
+    if (hasBoardStateChanged(grid, nextNotes)) {
+      recordUndoSnapshot();
+    }
+    setNotes(nextNotes);
     setCurrentHint(null);
     setMessages(["Filled notes for all empty cells from the current board."]);
   }
 
   function handleRemoveAllNotes() {
-    setNotes(removeAllNotes(notes));
+    const nextNotes = removeAllNotes(notes);
+    if (hasBoardStateChanged(grid, nextNotes)) {
+      recordUndoSnapshot();
+    }
+    setNotes(nextNotes);
     setCurrentHint(null);
     setMessages(["Removed all notes."]);
   }
@@ -396,6 +457,7 @@ export default function SudokuTutorPage() {
     setQuickFillDigit(null);
     setCurrentHint(null);
     setHistory([]);
+    setUndoStack([]);
     setMessages(nextMessages);
   }
 
@@ -462,6 +524,7 @@ export default function SudokuTutorPage() {
               const col = index % 9;
               const noteValues = notes[index] ?? [];
               const isGiven = isSolving && givenMask[index];
+              const shouldShowHintPreview = hintPreview?.index === index;
               const classes = [
                 "sudoku-cell",
                 selectedIndex === index ? "selected" : "",
@@ -474,17 +537,16 @@ export default function SudokuTutorPage() {
                 primaryIndexes.has(index) ? "hint-primary" : "",
                 relatedIndexes.has(index) ? "hint-related" : "",
                 eliminationIndexes.has(index) ? "hint-elimination" : "",
-                hintPreview?.index === index ? "hint-preview" : ""
+                shouldShowHintPreview ? "hint-preview" : ""
               ]
                 .filter(Boolean)
                 .join(" ");
-              const ariaValue = value
-                ? `, ${value}${isGiven ? ", loaded clue" : ""}`
-                : hintPreview?.index === index
-                  ? `, suggested ${hintPreview.digit}`
-                  : noteValues.length
-                    ? `, notes ${noteValues.join(" ")}`
-                    : "";
+              const ariaDetails = [
+                value ? `${value}${isGiven ? ", loaded clue" : ""}` : "",
+                !value && shouldShowHintPreview ? `suggested ${hintPreview.digit}` : "",
+                !value && noteValues.length ? `notes ${noteValues.join(" ")}` : ""
+              ].filter(Boolean);
+              const ariaValue = ariaDetails.length ? `, ${ariaDetails.join(", ")}` : "";
 
               return (
                 <button
@@ -497,13 +559,16 @@ export default function SudokuTutorPage() {
                 >
                   {value ? (
                     <strong>{value}</strong>
-                  ) : hintPreview?.index === index ? (
-                    <span className="hint-preview-value" aria-hidden="true">
-                      {hintPreview.digit}
-                    </span>
-                  ) : noteValues.length ? (
-                    <NoteMarks activeDigit={activeHighlightDigit} values={noteValues} />
-                  ) : null}
+                  ) : (
+                    <>
+                      {shouldShowHintPreview ? (
+                        <span className="hint-preview-value" aria-hidden="true">
+                          {hintPreview.digit}
+                        </span>
+                      ) : null}
+                      {noteValues.length ? <NoteMarks activeDigit={activeHighlightDigit} values={noteValues} /> : null}
+                    </>
+                  )}
                 </button>
               );
             })}
@@ -609,6 +674,16 @@ export default function SudokuTutorPage() {
                 </div>
               ) : (
                 <div className="control-stack" aria-label="Solving controls">
+                  <button
+                    type="button"
+                    className="undo-action"
+                    onClick={handleUndo}
+                    disabled={undoStack.length === 0 || Boolean(busyLabel)}
+                    aria-label="Undo last board change"
+                  >
+                    <Undo2 size={17} />
+                    Undo
+                  </button>
                   <button
                     type="button"
                     className={editingNotes ? "switch-row active" : "switch-row"}
@@ -794,6 +869,18 @@ function HintPanel({
 
 function collectConflictIndexes(conflicts: ValidationConflict[]): Set<number> {
   return new Set(conflicts.flatMap((conflict) => conflict.cells.map(cellToIndex)));
+}
+
+function sameGrid(left: SudokuGrid, right: SudokuGrid): boolean {
+  return left.length === right.length && left.every((value, index) => value === right[index]);
+}
+
+function sameNotes(left: NotesGrid, right: NotesGrid): boolean {
+  return left.length === right.length && left.every((values, index) => sameNumberList(values, right[index] ?? []));
+}
+
+function sameNumberList(left: number[], right: number[]): boolean {
+  return left.length === right.length && left.every((value, index) => value === right[index]);
 }
 
 function collectHintCells(hint: HintResponse | null, kind: "primary" | "related" | "elimination"): Set<number> {

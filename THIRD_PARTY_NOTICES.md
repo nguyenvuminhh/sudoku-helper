@@ -26,12 +26,8 @@ dependencies and their transitive dependency trees:
 | httpx | Test client transport dependency for FastAPI/Starlette tests | BSD-3-Clause | https://github.com/encode/httpx |
 | NumPy | Numeric arrays and image preprocessing | BSD-3-Clause | https://github.com/numpy/numpy |
 | OpenCV / opencv-python-headless | Sudoku grid extraction and image processing | Apache-2.0 | https://github.com/opencv/opencv and https://github.com/opencv/opencv-python |
-| Pillow | Image loading/manipulation support | HPND / Pillow License | https://github.com/python-pillow/Pillow |
-| pytesseract | Python wrapper for generic OCR fallback | Apache-2.0 | https://github.com/madmaze/pytesseract |
-| Tesseract OCR | Optional system OCR fallback installed in the Docker image | Apache-2.0 | https://github.com/tesseract-ocr/tesseract |
 
-The product direction keeps OpenCV grid extraction as the primary image import
-path. Tesseract OCR is only a fallback when OpenCV extraction fails.
+The product direction keeps OpenCV grid extraction as the image import path.
 
 ## Optional Model Runtime
 

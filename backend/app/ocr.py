@@ -3,7 +3,6 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass
 from functools import lru_cache
-from io import BytesIO
 from pathlib import Path
 from typing import Protocol
 
@@ -73,24 +72,13 @@ def recognize_sudoku_image(image_bytes: bytes, filename: str) -> OcrResult:
             warnings.append("Grid detected with OpenCV. Review the classified digits before asking for a hint.")
         return OcrResult(cells=ocr_cells, warnings=warnings)
     except Exception as exc:  # noqa: BLE001 - optional CV dependencies and arbitrary uploads can fail many ways.
-        try:
-            fallback = _recognize_with_tesseract(image_bytes)
-            return OcrResult(
-                cells=fallback.cells,
-                warnings=[
-                    f"OpenCV grid parser could not read {filename or 'the upload'}: {exc}",
-                    "Used generic OCR fallback. Review every digit before asking for a hint.",
-                    *fallback.warnings,
-                ],
-            )
-        except Exception as fallback_exc:  # noqa: BLE001
-            return OcrResult(
-                cells=_empty_cells(),
-                warnings=[
-                    f"Could not find a Sudoku grid in {filename or 'the upload'}.",
-                    "Use a clean crop with the full outer border visible, or enter the puzzle manually in the correction grid.",
-                ],
-            )
+        return OcrResult(
+            cells=_empty_cells(),
+            warnings=[
+                f"Could not find a Sudoku grid in {filename or 'the upload'}.",
+                "Use a clean crop with the full outer border visible, or enter the puzzle manually in the correction grid.",
+            ],
+        )
 
 
 def extract_sudoku_cells(image_bytes: bytes) -> list[ExtractedCell]:
@@ -392,51 +380,6 @@ def _cv2_np() -> tuple[object, object]:
     import numpy as np  # type: ignore[import-not-found]
 
     return cv2, np
-
-
-def _recognize_with_tesseract(image_bytes: bytes) -> OcrResult:
-    from PIL import Image, ImageOps  # type: ignore[import-not-found]
-    import pytesseract  # type: ignore[import-not-found]
-
-    image = Image.open(BytesIO(image_bytes)).convert("L")
-    image = ImageOps.autocontrast(image)
-    width, height = image.size
-    if width < 90 or height < 90:
-        raise ValueError("image is too small to contain a readable Sudoku grid")
-
-    cell_width = width / 9
-    cell_height = height / 9
-    cells: list[OcrCell] = []
-    warnings: list[str] = []
-
-    for row in range(9):
-        for col in range(9):
-            left = int(col * cell_width + cell_width * 0.15)
-            top = int(row * cell_height + cell_height * 0.15)
-            right = int((col + 1) * cell_width - cell_width * 0.15)
-            bottom = int((row + 1) * cell_height - cell_height * 0.15)
-            crop = image.crop((left, top, right, bottom))
-            crop = crop.resize((96, 96))
-            text = pytesseract.image_to_string(
-                crop,
-                config="--psm 10 --oem 3 -c tessedit_char_whitelist=123456789",
-            )
-            digit = _first_digit(text)
-            cells.append(OcrCell(row=row + 1, col=col + 1, value=digit, confidence=0.78 if digit else 0.25))
-
-    if all(cell.value is None for cell in cells):
-        warnings.append("No digits were detected. Use a clean crop of the Sudoku grid or enter the puzzle manually.")
-    else:
-        warnings.append("Review the detected digits before asking for a hint.")
-
-    return OcrResult(cells=cells, warnings=warnings)
-
-
-def _first_digit(text: str) -> int | None:
-    for char in text:
-        if char in "123456789":
-            return int(char)
-    return None
 
 
 def _empty_cells() -> list[OcrCell]:

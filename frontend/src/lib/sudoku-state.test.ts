@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   applyOcrCells,
   applyHintEliminationsToNotes,
+  createBoardSnapshot,
   collectMatchingDigitHighlights,
   createEmptyNotes,
   createEmptyGrid,
@@ -13,7 +14,9 @@ import {
   quickFillNotes,
   removeAllNotes,
   resolveKeyboardInput,
+  restoreUndoSnapshot,
   notesToCandidatePayload,
+  pushUndoSnapshot,
   setCellValue,
   setCellValueWithNotes,
   toggleCellNote,
@@ -216,5 +219,37 @@ describe("sudoku-state", () => {
     expect(payload?.["1"]).toEqual([2, 3]);
     expect(payload?.["2"]).toEqual([2, 3, 4, 5, 6, 7, 8, 9]);
     expect(payload?.["0"]).toBeUndefined();
+  });
+
+  it("stores and restores undo snapshots without sharing mutable board arrays", () => {
+    const grid = setCellValue(createEmptyGrid(), 0, 5);
+    const notes = createEmptyNotes();
+    notes[1] = [2, 3];
+    const lowConfidence = [8];
+
+    const stack = pushUndoSnapshot([], createBoardSnapshot(grid, notes, 1, lowConfidence));
+    grid[0] = 9;
+    notes[1].push(4);
+    lowConfidence.push(9);
+
+    const restored = restoreUndoSnapshot(stack);
+
+    expect(restored.snapshot?.grid[0]).toBe(5);
+    expect(restored.snapshot?.notes[1]).toEqual([2, 3]);
+    expect(restored.snapshot?.selectedIndex).toBe(1);
+    expect(restored.snapshot?.lowConfidence).toEqual([8]);
+    expect(restored.stack).toEqual([]);
+  });
+
+  it("limits undo snapshots to the newest board states", () => {
+    const oldest = createBoardSnapshot(setCellValue(createEmptyGrid(), 0, 1), createEmptyNotes(), 0, []);
+    const middle = createBoardSnapshot(setCellValue(createEmptyGrid(), 1, 2), createEmptyNotes(), 1, []);
+    const newest = createBoardSnapshot(setCellValue(createEmptyGrid(), 2, 3), createEmptyNotes(), 2, []);
+
+    let stack = pushUndoSnapshot([], oldest, 2);
+    stack = pushUndoSnapshot(stack, middle, 2);
+    stack = pushUndoSnapshot(stack, newest, 2);
+
+    expect(stack.map((snapshot) => snapshot.selectedIndex)).toEqual([2, 1]);
   });
 });

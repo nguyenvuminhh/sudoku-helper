@@ -24,16 +24,14 @@ class OcrTests(unittest.TestCase):
         self.assertTrue(all(cell.value is None or 1 <= cell.value <= 9 for cell in result.cells))
         self.assertGreaterEqual(len(result.warnings), 1)
 
-    def test_failed_import_does_not_expose_tesseract_install_errors(self):
-        with (
-            patch("backend.app.ocr.extract_sudoku_cells", side_effect=ValueError("no grid")),
-            patch("backend.app.ocr._recognize_with_tesseract", side_effect=RuntimeError("tesseract is not installed")),
-        ):
+    def test_failed_opencv_import_returns_empty_cells_without_secondary_ocr_path(self):
+        with patch("backend.app.ocr.extract_sudoku_cells", side_effect=ValueError("no grid")):
             result = recognize_sudoku_image(b"not-a-real-image", "bad-upload.txt")
 
+        self.assertEqual(len(result.cells), 81)
+        self.assertTrue(all(cell.value is None for cell in result.cells))
         warning_text = " ".join(result.warnings).lower()
-        self.assertNotIn("tesseract", warning_text)
-        self.assertNotIn("generic ocr fallback", warning_text)
+        self.assertNotIn("fallback", warning_text)
         self.assertIn("could not find a sudoku grid", warning_text)
 
     def test_extract_sudoku_cells_finds_positions_from_grid_image(self):

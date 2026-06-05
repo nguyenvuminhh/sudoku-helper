@@ -98,7 +98,8 @@ describe("sudoku tutor layout source", () => {
     const fillNotesBody = sourceBetween("function handleQuickFillNotes", "function handleRemoveAllNotes");
 
     expect(cellClickBody).toContain("if (editingNotes)");
-    expect(cellClickBody).toContain("toggleCellNote(currentNotes, grid, index, quickFillDigit)");
+    expect(cellClickBody).toContain("toggleCellNote(notes, grid, index, quickFillDigit)");
+    expect(cellClickBody).toContain("recordUndoSnapshot");
     expect(quickFillModeBody).not.toContain("setEditingNotes(false)");
     expect(toggleNotesBody).not.toContain("setQuickFillMode(false)");
     expect(toggleNotesBody).not.toContain("setQuickFillDigit(null)");
@@ -109,7 +110,8 @@ describe("sudoku tutor layout source", () => {
   it("lays out solving controls as switches, note actions, reset icon, and hint", () => {
     const controlsHeader = pageSource.indexOf('className="controls-header"');
     const resetIcon = pageSource.indexOf('className="reset-icon-button"', controlsHeader);
-    const notesSwitch = pageSource.indexOf('aria-label="Notes"', resetIcon);
+    const undoAction = pageSource.indexOf('className="undo-action"', resetIcon);
+    const notesSwitch = pageSource.indexOf('aria-label="Notes"', undoAction);
     const quickFillSwitch = pageSource.indexOf('aria-label="Quick fill"', notesSwitch);
     const noteActionRow = pageSource.indexOf('className="note-action-row"', quickFillSwitch);
     const fillAllNotes = pageSource.indexOf("Fill all notes", noteActionRow);
@@ -117,7 +119,8 @@ describe("sudoku tutor layout source", () => {
     const hintAction = pageSource.indexOf('className="primary hint-action"', removeAllNotes);
 
     expect(resetIcon).toBeGreaterThan(controlsHeader);
-    expect(notesSwitch).toBeGreaterThan(resetIcon);
+    expect(undoAction).toBeGreaterThan(resetIcon);
+    expect(notesSwitch).toBeGreaterThan(undoAction);
     expect(quickFillSwitch).toBeGreaterThan(notesSwitch);
     expect(fillAllNotes).toBeGreaterThan(noteActionRow);
     expect(removeAllNotes).toBeGreaterThan(fillAllNotes);
@@ -126,7 +129,16 @@ describe("sudoku tutor layout source", () => {
     expect(globalStyles).toContain(".switch-row");
     expect(globalStyles).toContain(".switch-track");
     expect(globalStyles).toContain(".reset-icon-button");
+    expect(globalStyles).toContain(".undo-action");
     expect(globalStyles).toContain(".note-action-row");
+  });
+
+  it("wires undo to board-change history during solving", () => {
+    expect(pageSource).toContain("undoStack");
+    expect(pageSource).toContain("handleUndo");
+    expect(pageSource).toContain("recordUndoSnapshot");
+    expect(pageSource).toContain('aria-label="Undo last board change"');
+    expect(pageSource).toContain("Undo2");
   });
 
   it("keeps switch and reset surfaces white while centering hint action content", () => {
@@ -163,6 +175,17 @@ describe("sudoku tutor layout source", () => {
     expect(pageSource).toContain("hintPreview");
     expect(pageSource).toContain("hint-preview");
     expect(pageSource).toContain("hint-preview-value");
+  });
+
+  it("keeps existing notes visible with hint placement previews", () => {
+    const cellRenderBody = sourceBetween("const shouldShowHintPreview", "</button>");
+
+    expect(cellRenderBody).toContain('shouldShowHintPreview ? `suggested ${hintPreview.digit}` : ""');
+    expect(cellRenderBody).toContain('!value && noteValues.length ? `notes ${noteValues.join(" ")}` : ""');
+    expect(cellRenderBody).toContain("{shouldShowHintPreview ? (");
+    expect(cellRenderBody).toContain("noteValues.length ? <NoteMarks activeDigit={activeHighlightDigit} values={noteValues} /> : null");
+    expect(globalStyles).toContain(".sudoku-cell > .hint-preview-value");
+    expect(globalStyles).toContain(".sudoku-cell > .notes");
   });
 
   it("keeps hint placement behind an explicit apply button in the next hint panel", () => {

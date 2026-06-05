@@ -7,6 +7,13 @@ export type MatchingDigitHighlights = {
   noteIndexes: number[];
 };
 
+export type BoardSnapshot = {
+  grid: SudokuGrid;
+  notes: NotesGrid;
+  selectedIndex: number;
+  lowConfidence: number[];
+};
+
 export type ValidationConflict = {
   unit: "row" | "col" | "box";
   unitNumber: number;
@@ -42,6 +49,40 @@ export function createEmptyNotes(): NotesGrid {
 
 export function createGivenMask(grid: SudokuGrid): GivenMask {
   return grid.map((value) => value !== null);
+}
+
+export function createBoardSnapshot(
+  grid: SudokuGrid,
+  notes: NotesGrid,
+  selectedIndex: number,
+  lowConfidence: number[]
+): BoardSnapshot {
+  return {
+    grid: [...grid],
+    notes: cloneNotes(notes),
+    selectedIndex,
+    lowConfidence: [...lowConfidence]
+  };
+}
+
+export function pushUndoSnapshot(stack: BoardSnapshot[], snapshot: BoardSnapshot, limit = 50): BoardSnapshot[] {
+  if (limit <= 0) {
+    return [];
+  }
+
+  return [cloneBoardSnapshot(snapshot), ...stack.map(cloneBoardSnapshot)].slice(0, limit);
+}
+
+export function restoreUndoSnapshot(stack: BoardSnapshot[]): { snapshot: BoardSnapshot | null; stack: BoardSnapshot[] } {
+  if (stack.length === 0) {
+    return { snapshot: null, stack: [] };
+  }
+
+  const [snapshot, ...remaining] = stack;
+  return {
+    snapshot: cloneBoardSnapshot(snapshot),
+    stack: remaining.map(cloneBoardSnapshot)
+  };
 }
 
 export function parsePuzzleText(text: string): SudokuGrid {
@@ -300,6 +341,10 @@ function usedDigits(grid: SudokuGrid, index: number): Set<number> {
 
 function cloneNotes(notes: NotesGrid): NotesGrid {
   return Array.from({ length: 81 }, (_, index) => [...(notes[index] ?? [])]);
+}
+
+function cloneBoardSnapshot(snapshot: BoardSnapshot): BoardSnapshot {
+  return createBoardSnapshot(snapshot.grid, snapshot.notes, snapshot.selectedIndex, snapshot.lowConfidence);
 }
 
 function notesContainAnyCandidate(notes: NotesGrid): boolean {

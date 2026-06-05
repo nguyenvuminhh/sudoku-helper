@@ -58,7 +58,7 @@ python3 -m uvicorn backend.app.main:app --host 127.0.0.1 --port 8001
 - Add tests before changing behavior.
 - Do not depend on external AI services for image import unless the product direction changes.
 - Image import should use OpenCV grid extraction before digit classification.
-- Keep generic OCR such as Tesseract as fallback only, not the primary path.
+- Do not add non-grid OCR paths for image import.
 - Image import must ignore pencil-note/candidate digits and classify only large cell digits.
 - Prefer `data/models/onnx-mnist/mnist-8.onnx` when installed; it is downloaded by `make model` and Hugging Face lists it as `Apache-2.0`.
 - Treat image import as an editable assistant, not fully trustworthy OCR.

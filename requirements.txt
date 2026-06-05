@@ -4,8 +4,3 @@ python-multipart>=0.0.22,<1
 httpx>=0.28,<1
 numpy>=2.0,<3
 opencv-python-headless>=4.10,<5
-
-# Optional generic OCR fallback used only when OpenCV grid extraction fails.
-# The system tesseract binary is also required for this fallback.
-pillow>=12,<13
-pytesseract>=0.3.13,<1

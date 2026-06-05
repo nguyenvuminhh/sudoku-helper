@@ -188,9 +188,11 @@ h2 {
   background: #fffef8;
   border: 0;
   border-radius: 0;
+  display: grid;
   box-shadow: none;
   min-height: 0;
   padding: 0;
+  place-items: center;
   position: relative;
   transform: none;
 }
@@ -218,6 +220,12 @@ h2 {
   font-family: "Iowan Old Style", Georgia, serif;
   font-size: 2rem;
   line-height: 1;
+}
+
+.sudoku-cell > strong,
+.sudoku-cell > .hint-preview-value,
+.sudoku-cell > .notes {
+  grid-area: 1 / 1;
 }
 
 .sudoku-cell.locked-given {
@@ -297,6 +305,7 @@ h2 {
   font-size: 2rem;
   font-weight: 800;
   line-height: 1;
+  z-index: 0;
 }
 
 .notes {
@@ -308,6 +317,7 @@ h2 {
   height: 84%;
   line-height: 1;
   width: 84%;
+  z-index: 1;
 }
 
 .notes span {
@@ -582,6 +592,10 @@ h2 {
   display: grid;
   gap: 8px;
   grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.undo-action {
+  justify-content: center;
 }
 
 .note-action-row button,

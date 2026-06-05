@@ -63,9 +63,6 @@ class PublicReleaseFilesTests(unittest.TestCase):
             "Uvicorn",
             "OpenCV",
             "NumPy",
-            "Pillow",
-            "pytesseract",
-            "Tesseract OCR",
             "onnxruntime",
             "Hugging Face Hub",
             "onnxmodelzoo/mnist-8",
@@ -89,6 +86,31 @@ class PublicReleaseFilesTests(unittest.TestCase):
         for text in required_strings:
             with self.subTest(text=text):
                 self.assertIn(text, notice)
+
+    def test_public_release_files_do_not_ship_generic_ocr_fallback(self):
+        checked_files = [
+            ROOT / "Dockerfile",
+            ROOT / "requirements.txt",
+            ROOT / "THIRD_PARTY_NOTICES.md",
+            ROOT / "backend" / "app" / "ocr.py",
+            ROOT / "README.md",
+            ROOT / "AGENTS.md",
+        ]
+
+        forbidden_strings = [
+            "tesseract",
+            "pytesseract",
+            "generic OCR fallback",
+            "generic ocr fallback",
+            "Pillow",
+            "from PIL",
+        ]
+
+        for path in checked_files:
+            content = path.read_text(encoding="utf-8")
+            for text in forbidden_strings:
+                with self.subTest(path=path.relative_to(ROOT), text=text):
+                    self.assertNotIn(text, content)
 
     def test_readme_links_to_third_party_notices(self):
         readme = (ROOT / "README.md").read_text(encoding="utf-8")

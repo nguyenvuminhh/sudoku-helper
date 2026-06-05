@@ -87,7 +87,8 @@ Run those in two separate terminals. `make be` starts FastAPI on `127.0.0.1:8001
 
 ## Image Import Pipeline
 
-The upload endpoint is local-first and does not rely only on generic OCR.
+The upload endpoint is local-first and uses OpenCV grid extraction before digit
+classification.
 
 Current flow:
 
@@ -112,8 +113,6 @@ make model
 That downloads `onnxmodelzoo/mnist-8` from Hugging Face into `data/models/onnx-mnist/mnist-8.onnx`. Hugging Face lists this model as `Apache-2.0`. When that file exists, the backend uses it automatically. You can override the ONNX model path with `SUDOKU_DIGIT_MODEL=/path/to/model.onnx`.
 
 The bundled MNIST model predicts labels `0..9`; blank handling is done before model inference by OpenCV. A predicted `0` is treated as empty because Sudoku cells only contain `1..9`.
-
-Tesseract remains only as a fallback if OpenCV grid extraction fails. Users should still review detected digits before requesting a hint.
 
 The importer intentionally reads only large given/entered digits. Small candidate notes inside a Sudoku cell are ignored.
 
