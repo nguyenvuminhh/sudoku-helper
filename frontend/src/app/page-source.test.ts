@@ -200,6 +200,15 @@ describe("sudoku tutor layout source", () => {
     expect(applyLabel).toBeGreaterThan(hintPanelDefinition);
     expect(pageSource.indexOf("onClick={onApplyHint}")).toBeGreaterThan(hintPanelDefinition);
   });
+
+  it("runs image import in the browser before using the server OCR fallback", () => {
+    const uploadBody = sourceBetween("async function handleUpload", "function loadSample");
+
+    expect(pageSource).toContain("recognizeImageInBrowser");
+    expect(uploadBody).toContain("recognizeUploadedImage(file)");
+    expect(pageSource).toContain("async function recognizeUploadedImage");
+    expect(pageSource.indexOf("recognizeImageInBrowser(file)")).toBeLessThan(pageSource.indexOf("recognizeImage(file)"));
+  });
 });
 
 function sourceBetween(start: string, end: string): string {

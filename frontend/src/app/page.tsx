@@ -25,8 +25,10 @@ import {
   recognizeImage,
   requestHint,
   type GeneratedPuzzleResponse,
-  type HintResponse
+  type HintResponse,
+  type OcrResponse
 } from "../lib/api";
+import { recognizeImageInBrowser } from "../lib/client-ocr";
 import {
   applyHintEliminationsToNotes,
   applyOcrCells,
@@ -473,7 +475,7 @@ export default function SudokuTutorPage() {
 
     setBusyLabel("Reading image");
     try {
-      const result = await recognizeImage(file);
+      const result = await recognizeUploadedImage(file);
       const applied = applyOcrCells(createEmptyGrid(), result.cells);
       loadPuzzle(applied.grid, result.warnings);
       setLowConfidence(applied.lowConfidence);
@@ -781,6 +783,22 @@ export default function SudokuTutorPage() {
   );
 }
 
+async function recognizeUploadedImage(file: File): Promise<OcrResponse> {
+  try {
+    return await recognizeImageInBrowser(file);
+  } catch (browserError) {
+    try {
+      const fallback = await recognizeImage(file);
+      return {
+        cells: fallback.cells,
+        warnings: [`Browser OCR failed (${errorMessage(browserError)}). Used server OCR fallback.`, ...fallback.warnings]
+      };
+    } catch (serverError) {
+      throw new Error(`Browser OCR failed (${errorMessage(browserError)}). Server OCR fallback failed (${errorMessage(serverError)}).`);
+    }
+  }
+}
+
 function NoteMarks({ activeDigit, values }: { activeDigit: number | null; values: number[] }) {
   return (
     <span className="notes" aria-hidden="true">
@@ -922,4 +940,8 @@ function isEditableTarget(target: EventTarget | null): boolean {
   }
   const tagName = target.tagName.toLowerCase();
   return tagName === "input" || tagName === "textarea" || target.isContentEditable;
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : "unknown error";
 }

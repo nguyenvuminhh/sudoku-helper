@@ -87,24 +87,30 @@ Run those in two separate terminals. `make be` starts FastAPI on `127.0.0.1:8001
 
 ## Image Import Pipeline
 
-The upload endpoint is local-first and uses OpenCV grid extraction before digit
-classification.
+Image import is browser-first: the frontend tries OpenCV grid extraction and
+ONNX digit classification locally, then falls back to the FastAPI upload
+endpoint if browser OCR is unavailable.
 
 Current flow:
 
 ```text
 image upload
--> OpenCV grayscale/threshold processing
+-> browser OpenCV grayscale/threshold processing
 -> largest square contour detection
 -> perspective warp to a flat 9x9 grid
 -> split into 81 cell images
 -> blank detection that ignores small pencil notes
--> digit classifier
+-> browser ONNX digit classifier
+-> optional server OCR fallback
 -> Sudoku consistency warnings
 -> editable correction grid
 ```
 
-By default the backend uses a lightweight OpenCV template digit classifier so it works without a trained model. For better accuracy, install the optional pretrained model:
+The frontend ships `frontend/public/models/mnist-12.onnx` for browser
+classification through `onnxruntime-web`. By default the backend still uses a
+lightweight OpenCV template digit classifier so it works without a trained
+server model. For better backend fallback accuracy, install the optional
+pretrained model:
 
 ```bash
 make model
