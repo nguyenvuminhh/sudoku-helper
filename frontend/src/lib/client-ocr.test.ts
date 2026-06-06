@@ -1,6 +1,11 @@
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+
 import { describe, expect, it } from "vitest";
 
 import { applyDigitShapeGuards, resolveClientOcrModelPath } from "./client-ocr";
+
+const clientOcrSource = readFileSync(fileURLToPath(new URL("./client-ocr.ts", import.meta.url)), "utf-8");
 
 function digitImage(points: Array<[number, number]>): Uint8Array {
   const image = new Uint8Array(28 * 28);
@@ -45,4 +50,18 @@ describe("client OCR helpers", () => {
 
     expect(applyDigitShapeGuards(6, digitImage(loop))).toBe(9);
   });
+
+  it("starts OpenCV and classifier runtime loading in parallel", () => {
+    const recognitionBody = sourceBetween("export async function recognizeImageInBrowser", "export function resolveClientOcrModelPath");
+
+    expect(recognitionBody).toContain("Promise.all([loadOpenCv(), loadClientDigitClassifier()])");
+  });
 });
+
+function sourceBetween(start: string, end: string): string {
+  const startIndex = clientOcrSource.indexOf(start);
+  const endIndex = clientOcrSource.indexOf(end, startIndex + start.length);
+  expect(startIndex).toBeGreaterThan(-1);
+  expect(endIndex).toBeGreaterThan(startIndex);
+  return clientOcrSource.slice(startIndex, endIndex);
+}

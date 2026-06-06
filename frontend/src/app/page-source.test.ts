@@ -209,6 +209,14 @@ describe("sudoku tutor layout source", () => {
     expect(pageSource).toContain("async function recognizeUploadedImage");
     expect(pageSource.indexOf("recognizeImageInBrowser(file)")).toBeLessThan(pageSource.indexOf("recognizeImage(file)"));
   });
+
+  it("starts loading browser OCR before the file picker returns an image", () => {
+    const uploadClickBody = sourceBetween("function handleUploadClick", "async function handleUpload");
+
+    expect(pageSource).toContain("preloadBrowserOcr");
+    expect(uploadClickBody).toContain("preloadBrowserOcr()");
+    expect(pageSource).toContain("onClick={handleUploadClick}");
+  });
 });
 
 function sourceBetween(start: string, end: string): string {

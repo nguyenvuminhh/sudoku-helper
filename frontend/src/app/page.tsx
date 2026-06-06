@@ -28,7 +28,7 @@ import {
   type HintResponse,
   type OcrResponse
 } from "../lib/api";
-import { recognizeImageInBrowser } from "../lib/client-ocr";
+import { preloadBrowserOcr, recognizeImageInBrowser } from "../lib/client-ocr";
 import {
   applyHintEliminationsToNotes,
   applyOcrCells,
@@ -467,6 +467,11 @@ export default function SudokuTutorPage() {
     return phase === "loading" || !givenMask[index];
   }
 
+  function handleUploadClick() {
+    preloadBrowserOcr();
+    fileInputRef.current?.click();
+  }
+
   async function handleUpload(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
     if (!file) {
@@ -659,7 +664,7 @@ export default function SudokuTutorPage() {
                       <Sparkles size={17} />
                       Sample
                     </button>
-                    <button type="button" onClick={() => fileInputRef.current?.click()}>
+                    <button type="button" onClick={handleUploadClick}>
                       <ImageUp size={17} />
                       Upload
                     </button>

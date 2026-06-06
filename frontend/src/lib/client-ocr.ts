@@ -34,8 +34,7 @@ declare global {
 }
 
 export async function recognizeImageInBrowser(file: File): Promise<OcrResponse> {
-  const cv = await loadOpenCv();
-  const classifier = await loadClientDigitClassifier();
+  const [cv, classifier] = await Promise.all([loadOpenCv(), loadClientDigitClassifier()]);
   const source = await imageFileToMat(cv, file);
   const mats: CvMat[] = [source];
 
@@ -68,6 +67,10 @@ export async function recognizeImageInBrowser(file: File): Promise<OcrResponse> 
   } finally {
     deleteMats(mats);
   }
+}
+
+export function preloadBrowserOcr(): void {
+  void Promise.allSettled([loadOpenCv(), loadClientDigitClassifier()]);
 }
 
 export function resolveClientOcrModelPath(basePath = process.env.NEXT_PUBLIC_BASE_PATH ?? "", configuredPath = process.env.NEXT_PUBLIC_SUDOKU_DIGIT_MODEL_PATH ?? ""): string {
