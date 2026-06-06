@@ -53,23 +53,6 @@ The repository ignores `data/models/` and `data/img/`. The download script
 also writes `data/models/onnx-mnist/LICENSE-NOTE.txt` beside the model inside
 generated runtime artifacts.
 
-## Browser-Shipped OCR Assets
-
-The static frontend ships browser-side OCR assets so image import can run
-before falling back to the FastAPI upload endpoint:
-
-- Model: `onnxmodelzoo/mnist-12`
-- File: `mnist-12.onnx`
-- Local path in the static frontend: `frontend/public/models/mnist-12.onnx`
-- Source: https://huggingface.co/onnxmodelzoo/mnist-12
-- License listed by Hugging Face: Apache-2.0
-- License note path: `frontend/public/models/LICENSE-NOTE.txt`
-
-The frontend also ships `frontend/public/vendor/opencv.js`, a browser OpenCV.js
-build copied from the Apache-2.0 `@techstark/opencv-js` package / OpenCV
-project. Its Apache-2.0 license text is kept at
-`frontend/public/vendor/opencv-LICENSE.txt`.
-
 ## Sudoku Generation Engine
 
 Puzzle generation and advanced human-style Sudoku rating use the Ukodus
@@ -95,7 +78,6 @@ The static Next.js frontend is built from `frontend/package.json` and
 | React | UI runtime | MIT | https://github.com/facebook/react |
 | React DOM | DOM renderer for React | MIT | https://github.com/facebook/react |
 | lucide-react | Icon components | ISC | https://github.com/lucide-icons/lucide |
-| onnxruntime-web | Browser ONNX digit classifier runtime | MIT | https://github.com/microsoft/onnxruntime |
 | TypeScript | Type checking | Apache-2.0 | https://github.com/microsoft/TypeScript |
 | Vitest | Frontend tests | MIT | https://github.com/vitest-dev/vitest |
 | Vite | Vitest/build tooling dependency | MIT | https://github.com/vitejs/vite |
@@ -118,9 +100,6 @@ as `@next/env`, `@next/swc-*`, `@swc/helpers`, `postcss`, `source-map-js`,
   native install/build/runtime helpers for Node-based image handling in the
   Next.js ecosystem; they are not authored application code and are distinct
   from browser-shipped Puzzle Hint source.
-- `frontend/public/vendor/opencv.js` is a vendored browser build, not an npm
-  runtime dependency. Keep `frontend/public/vendor/opencv-LICENSE.txt` with it
-  when redistributing the static frontend.
 
 For exact frontend dependency versions and resolved package tarballs, use
 `frontend/package-lock.json`.

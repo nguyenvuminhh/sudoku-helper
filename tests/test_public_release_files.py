@@ -56,15 +56,9 @@ class PublicReleaseFilesTests(unittest.TestCase):
             "OpenCV",
             "NumPy",
             "onnxruntime",
-            "onnxruntime-web",
             "Hugging Face Hub",
             "onnxmodelzoo/mnist-8",
             "https://huggingface.co/onnxmodelzoo/mnist-8",
-            "onnxmodelzoo/mnist-12",
-            "https://huggingface.co/onnxmodelzoo/mnist-12",
-            "frontend/public/models/mnist-12.onnx",
-            "frontend/public/vendor/opencv.js",
-            "opencv-LICENSE.txt",
             "Apache-2.0",
             "Next.js",
             "React",
@@ -89,6 +83,40 @@ class PublicReleaseFilesTests(unittest.TestCase):
         for text in required_strings:
             with self.subTest(text=text):
                 self.assertIn(text, notice)
+
+    def test_frontend_does_not_ship_browser_ocr_runtime_or_model(self):
+        removed_paths = [
+            "frontend/src/lib/client-ocr.ts",
+            "frontend/src/lib/client-ocr.test.ts",
+            "frontend/public/models/mnist-12.onnx",
+            "frontend/public/models/LICENSE-NOTE.txt",
+            "frontend/public/vendor/opencv.js",
+            "frontend/public/vendor/opencv-LICENSE.txt",
+        ]
+
+        for relative_path in removed_paths:
+            with self.subTest(path=relative_path):
+                self.assertFalse((ROOT / relative_path).exists())
+
+        checked_files = [
+            ROOT / "frontend" / "package.json",
+            ROOT / "frontend" / "package-lock.json",
+            ROOT / "THIRD_PARTY_NOTICES.md",
+            ROOT / "README.md",
+        ]
+        forbidden_strings = [
+            "onnxruntime-web",
+            "onnxmodelzoo/mnist-12",
+            "frontend/public/models/mnist-12.onnx",
+            "frontend/public/vendor/opencv.js",
+            "NEXT_PUBLIC_SUDOKU_DIGIT_MODEL_PATH",
+        ]
+
+        for path in checked_files:
+            content = path.read_text(encoding="utf-8")
+            for text in forbidden_strings:
+                with self.subTest(path=path.relative_to(ROOT), text=text):
+                    self.assertNotIn(text, content)
 
     def test_public_release_files_do_not_ship_generic_ocr_fallback(self):
         checked_files = [

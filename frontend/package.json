@@ -13,7 +13,6 @@
   "dependencies": {
     "lucide-react": "latest",
     "next": "latest",
-    "onnxruntime-web": "^1.26.0",
     "react": "latest",
     "react-dom": "latest"
   },

@@ -55,30 +55,28 @@ webview.
 
 ## Image Import Pipeline
 
-Image import is browser-first: the frontend tries OpenCV grid extraction and
-ONNX digit classification locally, then falls back to the FastAPI upload
-endpoint if browser OCR is unavailable.
+Image import uploads the selected image to the FastAPI backend. The backend
+handles OpenCV grid extraction, cell normalization, blank detection, and digit
+classification, then returns an editable correction grid to the frontend.
 
 Current flow:
 
 ```text
 image upload
--> browser OpenCV grayscale/threshold processing
+-> FastAPI upload endpoint
+-> backend OpenCV grayscale/threshold processing
 -> largest square contour detection
 -> perspective warp to a flat 9x9 grid
 -> split into 81 cell images
 -> blank detection that ignores small pencil notes
--> browser ONNX digit classifier
--> optional server OCR fallback
+-> backend digit classifier
 -> Sudoku consistency warnings
 -> editable correction grid
 ```
 
-The frontend ships `frontend/public/models/mnist-12.onnx` for browser
-classification through `onnxruntime-web`. By default the backend still uses a
-lightweight OpenCV template digit classifier so it works without a trained
-server model. For better backend fallback accuracy, install the optional
-pretrained model:
+By default the backend uses a lightweight OpenCV template digit classifier so it
+works without a trained model. For better accuracy, install the optional
+pretrained ONNX classifier:
 
 ```bash
 make model

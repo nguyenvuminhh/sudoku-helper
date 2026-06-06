@@ -201,21 +201,20 @@ describe("sudoku tutor layout source", () => {
     expect(pageSource.indexOf("onClick={onApplyHint}")).toBeGreaterThan(hintPanelDefinition);
   });
 
-  it("runs image import in the browser before using the server OCR fallback", () => {
+  it("sends uploaded images directly to backend OCR", () => {
     const uploadBody = sourceBetween("async function handleUpload", "function loadSample");
 
-    expect(pageSource).toContain("recognizeImageInBrowser");
-    expect(uploadBody).toContain("recognizeUploadedImage(file)");
-    expect(pageSource).toContain("async function recognizeUploadedImage");
-    expect(pageSource.indexOf("recognizeImageInBrowser(file)")).toBeLessThan(pageSource.indexOf("recognizeImage(file)"));
+    expect(uploadBody).toContain("recognizeImage(file)");
+    expect(uploadBody).not.toContain("recognizeUploadedImage");
+    expect(pageSource).not.toContain("../lib/client-ocr");
+    expect(pageSource).not.toContain("recognizeImageInBrowser");
+    expect(pageSource).not.toContain("preloadBrowserOcr");
   });
 
-  it("starts loading browser OCR before the file picker returns an image", () => {
-    const uploadClickBody = sourceBetween("function handleUploadClick", "async function handleUpload");
-
-    expect(pageSource).toContain("preloadBrowserOcr");
-    expect(uploadClickBody).toContain("preloadBrowserOcr()");
-    expect(pageSource).toContain("onClick={handleUploadClick}");
+  it("opens the upload picker without preloading browser OCR", () => {
+    expect(pageSource).not.toContain("function handleUploadClick");
+    expect(pageSource).not.toContain("onClick={handleUploadClick}");
+    expect(pageSource).toContain("onClick={() => fileInputRef.current?.click()}");
   });
 });
 

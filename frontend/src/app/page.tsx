@@ -25,10 +25,8 @@ import {
   recognizeImage,
   requestHint,
   type GeneratedPuzzleResponse,
-  type HintResponse,
-  type OcrResponse
+  type HintResponse
 } from "../lib/api";
-import { preloadBrowserOcr, recognizeImageInBrowser } from "../lib/client-ocr";
 import {
   applyHintEliminationsToNotes,
   applyOcrCells,
@@ -467,11 +465,6 @@ export default function SudokuTutorPage() {
     return phase === "loading" || !givenMask[index];
   }
 
-  function handleUploadClick() {
-    preloadBrowserOcr();
-    fileInputRef.current?.click();
-  }
-
   async function handleUpload(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
     if (!file) {
@@ -480,7 +473,7 @@ export default function SudokuTutorPage() {
 
     setBusyLabel("Reading image");
     try {
-      const result = await recognizeUploadedImage(file);
+      const result = await recognizeImage(file);
       const applied = applyOcrCells(createEmptyGrid(), result.cells);
       loadPuzzle(applied.grid, result.warnings);
       setLowConfidence(applied.lowConfidence);
@@ -664,7 +657,7 @@ export default function SudokuTutorPage() {
                       <Sparkles size={17} />
                       Sample
                     </button>
-                    <button type="button" onClick={handleUploadClick}>
+                    <button type="button" onClick={() => fileInputRef.current?.click()}>
                       <ImageUp size={17} />
                       Upload
                     </button>
@@ -786,22 +779,6 @@ export default function SudokuTutorPage() {
       </section>
     </main>
   );
-}
-
-async function recognizeUploadedImage(file: File): Promise<OcrResponse> {
-  try {
-    return await recognizeImageInBrowser(file);
-  } catch (browserError) {
-    try {
-      const fallback = await recognizeImage(file);
-      return {
-        cells: fallback.cells,
-        warnings: [`Browser OCR failed (${errorMessage(browserError)}). Used server OCR fallback.`, ...fallback.warnings]
-      };
-    } catch (serverError) {
-      throw new Error(`Browser OCR failed (${errorMessage(browserError)}). Server OCR fallback failed (${errorMessage(serverError)}).`);
-    }
-  }
 }
 
 function NoteMarks({ activeDigit, values }: { activeDigit: number | null; values: number[] }) {
@@ -945,8 +922,4 @@ function isEditableTarget(target: EventTarget | null): boolean {
   }
   const tagName = target.tagName.toLowerCase();
   return tagName === "input" || tagName === "textarea" || target.isContentEditable;
-}
-
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : "unknown error";
 }
