@@ -1,4 +1,5 @@
 import unittest
+import json
 from pathlib import Path
 
 
@@ -150,6 +151,16 @@ class PublicReleaseFilesTests(unittest.TestCase):
         self.assertIn("EC2", readme)
         self.assertIn("GitHub Pages", readme)
         self.assertIn("NEXT_PUBLIC_API_BASE_URL", readme)
+
+    def test_frontend_package_lock_has_complete_package_versions(self):
+        package_lock = json.loads((ROOT / "frontend" / "package-lock.json").read_text(encoding="utf-8"))
+        incomplete_packages = [
+            name
+            for name, metadata in package_lock["packages"].items()
+            if name and not metadata.get("link") and "version" not in metadata
+        ]
+
+        self.assertEqual([], incomplete_packages)
 
 
 if __name__ == "__main__":
