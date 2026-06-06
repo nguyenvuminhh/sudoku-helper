@@ -2,11 +2,12 @@
 
 ## Project
 
-Puzzle Hint is a Sudoku-first hint website.
+Puzzle Hint is a Sudoku-first hint desktop app.
 
 - Backend: FastAPI in `backend/app`.
 - Frontend: static-exported Next.js app in `frontend`.
-- Production shape: run `npm run build` in `frontend`, then FastAPI serves `frontend/out`.
+- Desktop shell: Tauri in `desktop/src-tauri`.
+- Production shape: run `make desktop-build` to build the frontend, backend sidecar, and current-platform installer.
 
 ## Commands
 
@@ -24,14 +25,10 @@ npm run typecheck
 npm run build
 ```
 
-Run hot-reload development servers from the repo root in two terminals:
+Run the desktop app in development mode:
 
 ```bash
-make be
-```
-
-```bash
-make fe
+make desktop-dev
 ```
 
 Install the optional pretrained digit classifier:
@@ -40,13 +37,10 @@ Install the optional pretrained digit classifier:
 make model
 ```
 
-Run the production-style app:
+Build the desktop installer for the current platform:
 
 ```bash
-cd frontend
-npm run build
-cd ..
-python3 -m uvicorn backend.app.main:app --host 127.0.0.1 --port 8001
+make desktop-build
 ```
 
 ## Editing Guidance

@@ -9,8 +9,9 @@ Dependency versions are controlled by:
 
 - Python backend: `requirements.txt` and `requirements-model.txt`
 - Frontend: `frontend/package.json` and `frontend/package-lock.json`
+- Desktop packaging: `requirements-desktop.txt`, `desktop/package.json`,
+  `desktop/package-lock.json`, and `desktop/src-tauri/Cargo.toml`
 - Rust Sudoku engine wrapper: `tools/sudoku-engine-cli/Cargo.toml`
-- Docker image contents: `Dockerfile`
 
 ## Backend Python Runtime
 
@@ -40,18 +41,17 @@ The product direction keeps OpenCV grid extraction as the image import path.
 
 ## Downloaded ONNX Model
 
-Docker builds run `scripts/download_digit_model.py`, which downloads:
+`make model` runs `scripts/download_digit_model.py`, which downloads:
 
 - Model: `onnxmodelzoo/mnist-8`
 - File: `mnist-8.onnx`
-- Local path in the app/Docker image: `data/models/onnx-mnist/mnist-8.onnx`
+- Local path in generated runtime artifacts: `data/models/onnx-mnist/mnist-8.onnx`
 - Source: https://huggingface.co/onnxmodelzoo/mnist-8
 - License listed by Hugging Face: Apache-2.0
 
-The repository ignores `data/models/` and `data/img/`, but production Docker
-images include the downloaded ONNX model. The download script also writes
-`data/models/onnx-mnist/LICENSE-NOTE.txt` beside the model inside generated
-runtime artifacts.
+The repository ignores `data/models/` and `data/img/`. The download script
+also writes `data/models/onnx-mnist/LICENSE-NOTE.txt` beside the model inside
+generated runtime artifacts.
 
 ## Browser-Shipped OCR Assets
 
@@ -82,9 +82,7 @@ Puzzle generation and advanced human-style Sudoku rating use the Ukodus
 - Copyright: Copyright (c) 2026 Patrick Deutsch
 
 The wrapper crate also uses `serde` and `serde_json`, which are commonly
-distributed under MIT OR Apache-2.0. The Docker image compiles the wrapper in a
-Rust build stage and copies only the compiled `sudoku-engine` binary into the
-Python runtime image.
+distributed under MIT OR Apache-2.0.
 
 ## Frontend Runtime And Build Dependencies
 
@@ -126,3 +124,21 @@ as `@next/env`, `@next/swc-*`, `@swc/helpers`, `postcss`, `source-map-js`,
 
 For exact frontend dependency versions and resolved package tarballs, use
 `frontend/package-lock.json`.
+
+## Desktop Packaging Dependencies
+
+The desktop wrapper is built from `desktop/package.json`,
+`desktop/package-lock.json`, `desktop/src-tauri/Cargo.toml`, and
+`requirements-desktop.txt`.
+
+| Project | Purpose | SPDX license | Source |
+| --- | --- | --- | --- |
+| Tauri | Cross-platform desktop shell and bundler | Apache-2.0 OR MIT | https://github.com/tauri-apps/tauri |
+| `@tauri-apps/cli` | Node CLI used to run and build the Tauri desktop app | Apache-2.0 OR MIT | https://github.com/tauri-apps/tauri |
+| `tauri-plugin-shell` | Tauri plugin used by the Rust shell to launch the backend sidecar | Apache-2.0 OR MIT | https://github.com/tauri-apps/plugins-workspace |
+| PyInstaller | Builds the FastAPI backend sidecar executable | GPLv2-or-later with a special exception | https://pyinstaller.org |
+
+The Tauri Rust package also uses small Rust helper crates such as `ureq` for
+the local backend health check. PyInstaller is used as a packaging tool for the
+backend sidecar; generated `build/`, `dist/`, `.spec`, and Tauri `binaries/`
+artifacts are ignored by git.

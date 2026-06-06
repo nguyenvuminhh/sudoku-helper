@@ -1,0 +1,33 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Puzzle Hint",
+  "version": "0.1.0",
+  "identifier": "com.puzzlehint.desktop",
+  "build": {
+    "beforeDevCommand": "cd ../frontend && NEXT_PUBLIC_API_BASE_URL=http://127.0.0.1:48731 npm run dev -- --hostname 127.0.0.1 --port 3000",
+    "beforeBuildCommand": "cd ../frontend && NEXT_PUBLIC_API_BASE_URL=http://127.0.0.1:48731 npm run build",
+    "devUrl": "http://127.0.0.1:3000",
+    "frontendDist": "../../frontend/out"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "Puzzle Hint",
+        "width": 1180,
+        "height": 820,
+        "minWidth": 960,
+        "minHeight": 680,
+        "resizable": true,
+        "visible": false
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "externalBin": ["binaries/puzzle-hint-backend"],
+    "category": "Education"
+  }
+}

@@ -1,6 +1,6 @@
 # Puzzle Hint
 
-Sudoku-first puzzle hint website with a FastAPI backend and a static Next.js frontend.
+Sudoku-first puzzle hint desktop app with a FastAPI backend and a static Next.js frontend.
 
 ## What is built
 
@@ -10,9 +10,9 @@ Sudoku-first puzzle hint website with a FastAPI backend and a static Next.js fro
 - Step-by-step hints with technique name, conclusion, layered explanation, highlights, and history.
 - Level-based puzzle generation backed by the Ukodus `sudoku-core` engine.
 - FastAPI API routes under `/api/sudoku/*`.
-- Next.js static export that can be served by FastAPI or deployed separately.
+- Tauri desktop wrapper that packages the frontend and runs the backend locally.
 
-## Run locally
+## Desktop packaging
 
 Install Python dependencies:
 
@@ -27,63 +27,31 @@ cd frontend
 npm install
 ```
 
-For production-style serving:
+Install desktop packaging dependencies:
 
 ```bash
-cd frontend
-npm run build
-cd ..
-python3 -m uvicorn backend.app.main:app --host 127.0.0.1 --port 8001 --reload
+make desktop-deps
 ```
 
-Then open `http://127.0.0.1:8001`.
-
-## Public deployment
-
-The recommended public deployment is split by responsibility:
-
-- Backend API and OCR on Amazon EC2, preferably behind HTTPS through Caddy, nginx plus Certbot, or an AWS Application Load Balancer.
-- Static frontend on GitHub Pages, built by `.github/workflows/frontend-pages.yml`.
-
-The frontend uses `NEXT_PUBLIC_API_BASE_URL` at build time to call the EC2 backend. Because GitHub Pages is HTTPS, the backend URL should also be HTTPS.
-
-Backend container:
+Build the installer for the current platform:
 
 ```bash
-docker build -t puzzle-hint-api .
-docker run -d \
-  --name puzzle-hint-api \
-  --restart unless-stopped \
-  -p 127.0.0.1:8001:8001 \
-  -e PUZZLE_HINT_CORS_ORIGINS=https://<github-user>.github.io,https://<github-user>.github.io/<repo-name> \
-  puzzle-hint-api
+make desktop-build
 ```
 
-The backend image uses a multi-stage Docker build: Rust compiles the local
-`tools/sudoku-engine-cli` wrapper, then the Python runtime image copies only the
-compiled `sudoku-engine` binary. Bare-metal backend runs need that binary at
-`bin/sudoku-engine` or `SUDOKU_ENGINE_BIN=/path/to/sudoku-engine`.
+On macOS this produces a `.dmg`. On Windows this produces an `.exe` NSIS
+installer. Each installer should be built on its target operating system unless
+a dedicated cross-compilation pipeline is added later.
 
-GitHub Pages repository variables:
-
-```text
-NEXT_PUBLIC_API_BASE_URL=https://api.example.com
-NEXT_PUBLIC_BASE_PATH=/<repo-name>
-```
-
-Leave `NEXT_PUBLIC_BASE_PATH` blank for a user or organization Pages site at `https://<github-user>.github.io/`.
-
-For frontend-only development against a running FastAPI server:
+For development:
 
 ```bash
-make be
+make desktop-dev
 ```
 
-```bash
-make fe
-```
-
-Run those in two separate terminals. `make be` starts FastAPI on `127.0.0.1:8001` with hot reload and CORS configured in `backend/app/main.py`. `make fe` starts Next.js on `127.0.0.1:3000` and points it at the backend.
+`make desktop-dev` runs the Tauri shell, a local FastAPI sidecar on
+`127.0.0.1:48731`, and the Next.js development server used by the desktop
+webview.
 
 ## Image Import Pipeline
 
@@ -136,4 +104,6 @@ cd frontend
 npm test -- --run
 npm run typecheck
 npm run build
+cd ..
+make desktop-build
 ```

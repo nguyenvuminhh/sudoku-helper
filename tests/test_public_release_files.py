@@ -11,11 +11,7 @@ class PublicReleaseFilesTests(unittest.TestCase):
         required_paths = [
             "LICENSE",
             ".gitignore",
-            ".dockerignore",
-            "Dockerfile",
-            "frontend/.env.example",
             ".github/workflows/ci.yml",
-            ".github/workflows/frontend-pages.yml",
             "THIRD_PARTY_NOTICES.md",
             "tools/sudoku-engine-cli/Cargo.toml",
         ]
@@ -24,22 +20,17 @@ class PublicReleaseFilesTests(unittest.TestCase):
             with self.subTest(path=relative_path):
                 self.assertTrue((ROOT / relative_path).exists())
 
-    def test_backend_dockerfile_runs_fastapi_api_with_healthcheck(self):
-        dockerfile = (ROOT / "Dockerfile").read_text(encoding="utf-8")
+    def test_web_deployment_release_files_are_removed(self):
+        removed_paths = [
+            "Dockerfile",
+            ".dockerignore",
+            "frontend/.env.example",
+            ".github/workflows/frontend-pages.yml",
+        ]
 
-        self.assertIn("FROM python:", dockerfile)
-        self.assertIn("requirements.txt", dockerfile)
-        self.assertIn("requirements-model.txt", dockerfile)
-        self.assertIn("FROM rust:", dockerfile)
-        self.assertIn("tools/sudoku-engine-cli", dockerfile)
-        self.assertIn("SUDOKU_ENGINE_BIN=/app/bin/sudoku-engine", dockerfile)
-        self.assertIn("COPY --from=sudoku_engine_builder", dockerfile)
-        self.assertIn("scripts/download_digit_model.py", dockerfile)
-        self.assertNotIn("ARG INSTALL_MODEL", dockerfile)
-        self.assertNotIn("ARG DOWNLOAD_MODEL", dockerfile)
-        self.assertIn("EXPOSE 8001", dockerfile)
-        self.assertIn("HEALTHCHECK", dockerfile)
-        self.assertIn("uvicorn backend.app.main:app", dockerfile)
+        for relative_path in removed_paths:
+            with self.subTest(path=relative_path):
+                self.assertFalse((ROOT / relative_path).exists())
 
     def test_ci_builds_sudoku_engine_cli(self):
         workflow = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
@@ -79,6 +70,11 @@ class PublicReleaseFilesTests(unittest.TestCase):
             "React",
             "React DOM",
             "lucide-react",
+            "Tauri",
+            "@tauri-apps/cli",
+            "tauri-plugin-shell",
+            "PyInstaller",
+            "GPLv2-or-later with a special exception",
             "caniuse-lite",
             "CC-BY-4.0",
             "lightningcss",
@@ -96,7 +92,6 @@ class PublicReleaseFilesTests(unittest.TestCase):
 
     def test_public_release_files_do_not_ship_generic_ocr_fallback(self):
         checked_files = [
-            ROOT / "Dockerfile",
             ROOT / "requirements.txt",
             ROOT / "THIRD_PARTY_NOTICES.md",
             ROOT / "backend" / "app" / "ocr.py",
@@ -130,27 +125,12 @@ class PublicReleaseFilesTests(unittest.TestCase):
 
         self.assertRegex(requirements, r"(?m)^httpx[<>=]")
 
-    def test_frontend_pages_workflow_builds_static_export_with_api_base_url(self):
-        workflow = (ROOT / ".github" / "workflows" / "frontend-pages.yml").read_text(encoding="utf-8")
-
-        self.assertIn("actions/upload-pages-artifact", workflow)
-        self.assertIn("actions/deploy-pages", workflow)
-        self.assertIn("path: frontend/out", workflow)
-        self.assertIn("NEXT_PUBLIC_API_BASE_URL", workflow)
-
-    def test_next_config_supports_optional_github_pages_base_path(self):
+    def test_next_config_has_no_github_pages_base_path(self):
         next_config = (ROOT / "frontend" / "next.config.ts").read_text(encoding="utf-8")
 
-        self.assertIn("NEXT_PUBLIC_BASE_PATH", next_config)
-        self.assertIn("basePath", next_config)
-        self.assertIn("assetPrefix", next_config)
-
-    def test_readme_documents_split_ec2_and_github_pages_deployment(self):
-        readme = (ROOT / "README.md").read_text(encoding="utf-8")
-
-        self.assertIn("EC2", readme)
-        self.assertIn("GitHub Pages", readme)
-        self.assertIn("NEXT_PUBLIC_API_BASE_URL", readme)
+        self.assertNotIn("NEXT_PUBLIC_BASE_PATH", next_config)
+        self.assertNotIn("basePath", next_config)
+        self.assertNotIn("assetPrefix", next_config)
 
     def test_frontend_package_lock_has_complete_package_versions(self):
         package_lock = json.loads((ROOT / "frontend" / "package-lock.json").read_text(encoding="utf-8"))
