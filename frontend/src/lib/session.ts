@@ -1,26 +1,30 @@
 import type { TutorPhase } from "./constants";
-import type { GivenMask, NotesGrid, SudokuGrid } from "./sudoku-state";
+import { createEmptyColors, createEmptyNotes, type BoardMarks, type GivenMask, type NotesGrid, type SudokuGrid } from "./sudoku-state";
 
 export const SESSION_STORAGE_KEY = "sudoku-session-v1";
 
 export type SavedSession = {
-  version: 1;
+  version: 2;
   grid: SudokuGrid;
-  notes: NotesGrid;
+  marks: BoardMarks;
   givenMask: GivenMask;
   phase: TutorPhase;
   selectedIndex: number;
   lowConfidence: number[];
   elapsedSeconds: number;
+  hintsUsed: number;
+  checksUsed: number;
+  techniqueNames: string[];
 };
 
 export function serializeSession(session: Omit<SavedSession, "version">): string {
-  return JSON.stringify({ version: 1, ...session });
+  return JSON.stringify({ version: 2, ...session });
 }
 
 /**
  * Parses a stored session, returning null for malformed or empty boards so a
- * corrupt localStorage entry can never break the app on load.
+ * corrupt localStorage entry can never break the app on load. Version 1
+ * sessions are migrated (their single notes layer becomes center marks).
  */
 export function parseSavedSession(raw: string | null): SavedSession | null {
   if (!raw) {
@@ -39,10 +43,10 @@ export function parseSavedSession(raw: string | null): SavedSession | null {
   }
   const session = data as Record<string, unknown>;
 
-  if (session.version !== 1) {
+  if (session.version !== 1 && session.version !== 2) {
     return null;
   }
-  if (!isGrid(session.grid) || !isNotes(session.notes) || !isMask(session.givenMask)) {
+  if (!isGrid(session.grid) || !isMask(session.givenMask)) {
     return null;
   }
   if (session.phase !== "loading" && session.phase !== "solving") {
@@ -63,15 +67,31 @@ export function parseSavedSession(raw: string | null): SavedSession | null {
     return null;
   }
 
+  let marks: BoardMarks;
+  if (session.version === 1) {
+    if (!isNotes(session.notes)) {
+      return null;
+    }
+    marks = { corner: createEmptyNotes(), center: session.notes, colors: createEmptyColors() };
+  } else {
+    if (!isMarks(session.marks)) {
+      return null;
+    }
+    marks = session.marks;
+  }
+
   return {
-    version: 1,
+    version: 2,
     grid,
-    notes: session.notes as NotesGrid,
+    marks,
     givenMask: session.givenMask as GivenMask,
     phase: session.phase,
     selectedIndex: session.selectedIndex,
     lowConfidence: session.lowConfidence as number[],
-    elapsedSeconds: Math.floor(session.elapsedSeconds)
+    elapsedSeconds: Math.floor(session.elapsedSeconds),
+    hintsUsed: asCount(session.hintsUsed),
+    checksUsed: asCount(session.checksUsed),
+    techniqueNames: isStringList(session.techniqueNames) ? session.techniqueNames : []
   };
 }
 
@@ -94,10 +114,34 @@ function isNotes(value: unknown): value is NotesGrid {
   );
 }
 
+function isColors(value: unknown): value is BoardMarks["colors"] {
+  return (
+    Array.isArray(value) &&
+    value.length === 81 &&
+    value.every((color) => color === null || (Number.isInteger(color) && color >= 1 && color <= 9))
+  );
+}
+
+function isMarks(value: unknown): value is BoardMarks {
+  if (typeof value !== "object" || value === null) {
+    return false;
+  }
+  const marks = value as Record<string, unknown>;
+  return isNotes(marks.corner) && isNotes(marks.center) && isColors(marks.colors);
+}
+
 function isMask(value: unknown): value is GivenMask {
   return Array.isArray(value) && value.length === 81 && value.every((flag) => typeof flag === "boolean");
 }
 
 function isCellIndex(value: unknown): value is number {
   return Number.isInteger(value) && (value as number) >= 0 && (value as number) <= 80;
+}
+
+function isStringList(value: unknown): value is string[] {
+  return Array.isArray(value) && value.every((item) => typeof item === "string");
+}
+
+function asCount(value: unknown): number {
+  return typeof value === "number" && Number.isInteger(value) && value >= 0 ? value : 0;
 }

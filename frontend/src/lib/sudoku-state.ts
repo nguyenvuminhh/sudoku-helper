@@ -7,9 +7,17 @@ export type MatchingDigitHighlights = {
   noteIndexes: number[];
 };
 
+export type CellColors = Array<number | null>;
+
+export type BoardMarks = {
+  corner: NotesGrid;
+  center: NotesGrid;
+  colors: CellColors;
+};
+
 export type BoardSnapshot = {
   grid: SudokuGrid;
-  notes: NotesGrid;
+  marks: BoardMarks;
   selectedIndex: number;
   lowConfidence: number[];
 };
@@ -58,15 +66,27 @@ export function createGivenMask(grid: SudokuGrid): GivenMask {
   return grid.map((value) => value !== null);
 }
 
+export function createEmptyColors(): CellColors {
+  return Array.from({ length: 81 }, () => null);
+}
+
+export function createEmptyMarks(): BoardMarks {
+  return { corner: createEmptyNotes(), center: createEmptyNotes(), colors: createEmptyColors() };
+}
+
+export function cloneMarks(marks: BoardMarks): BoardMarks {
+  return { corner: cloneNotes(marks.corner), center: cloneNotes(marks.center), colors: [...marks.colors] };
+}
+
 export function createBoardSnapshot(
   grid: SudokuGrid,
-  notes: NotesGrid,
+  marks: BoardMarks,
   selectedIndex: number,
   lowConfidence: number[]
 ): BoardSnapshot {
   return {
     grid: [...grid],
-    notes: cloneNotes(notes),
+    marks: cloneMarks(marks),
     selectedIndex,
     lowConfidence: [...lowConfidence]
   };
@@ -146,6 +166,104 @@ export function setCellValueWithNotes(
   }
 
   return { grid: nextGrid, notes: nextNotes };
+}
+
+/**
+ * Sets a cell value while clearing both note layers in the cell and pruning
+ * the placed digit from peer notes. Colors are left untouched.
+ */
+export function setCellValueWithMarks(
+  grid: SudokuGrid,
+  marks: BoardMarks,
+  index: number,
+  value: CellValue
+): { grid: SudokuGrid; marks: BoardMarks } {
+  const center = setCellValueWithNotes(grid, marks.center, index, value);
+  if (center.grid === grid) {
+    return { grid, marks };
+  }
+  const corner = setCellValueWithNotes(grid, marks.corner, index, value);
+  return { grid: center.grid, marks: { corner: corner.notes, center: center.notes, colors: [...marks.colors] } };
+}
+
+/**
+ * Smart-toggles a note digit across cells: if every empty cell in the group
+ * already holds the note it is removed everywhere, otherwise it is added to
+ * each empty cell. Filled cells are skipped.
+ */
+export function toggleNoteOnCells(notes: NotesGrid, grid: SudokuGrid, indexes: number[], digit: number): NotesGrid {
+  const targets = indexes.filter((index) => index >= 0 && index <= 80 && grid[index] === null);
+  if (targets.length === 0 || !DIGITS.includes(digit as (typeof DIGITS)[number])) {
+    return notes;
+  }
+
+  const everyCellHasNote = targets.every((index) => (notes[index] ?? []).includes(digit));
+  const next = cloneNotes(notes);
+  for (const index of targets) {
+    if (everyCellHasNote) {
+      next[index] = next[index].filter((note) => note !== digit);
+    } else if (!next[index].includes(digit)) {
+      next[index] = [...next[index], digit].sort((left, right) => left - right);
+    }
+  }
+  return next;
+}
+
+/**
+ * Smart-toggles a paint color across cells: if every cell already wears the
+ * color it is cleared, otherwise all cells are painted with it. A null color
+ * clears the cells.
+ */
+export function toggleColorOnCells(colors: CellColors, indexes: number[], color: number | null): CellColors {
+  const targets = indexes.filter((index) => index >= 0 && index <= 80);
+  if (targets.length === 0) {
+    return colors;
+  }
+
+  const next = [...colors];
+  if (color === null) {
+    for (const index of targets) {
+      next[index] = null;
+    }
+    return next;
+  }
+
+  const everyCellPainted = targets.every((index) => colors[index] === color);
+  for (const index of targets) {
+    next[index] = everyCellPainted ? null : color;
+  }
+  return next;
+}
+
+/** Removes eliminated digits from a notes grid without backfilling candidates. */
+export function pruneEliminationsFromNotes(notes: NotesGrid, eliminations: CandidateElimination[]): NotesGrid {
+  const next = cloneNotes(notes);
+  for (const elimination of eliminations) {
+    const index = cellToIndex(elimination.cell);
+    if (index < 0 || index > 80) {
+      continue;
+    }
+    next[index] = next[index].filter((note) => note !== elimination.digit);
+  }
+  return next;
+}
+
+/** Finds the next digit (wrapping) that has fewer than nine placements. */
+export function nextIncompleteDigit(grid: SudokuGrid, from: number): number | null {
+  const counts = new Array(10).fill(0);
+  for (const value of grid) {
+    if (value) {
+      counts[value] += 1;
+    }
+  }
+
+  for (let offset = 1; offset <= 9; offset += 1) {
+    const digit = ((from - 1 + offset) % 9) + 1;
+    if (counts[digit] < 9) {
+      return digit;
+    }
+  }
+  return null;
 }
 
 export function validateSudokuGrid(grid: SudokuGrid): ValidationResponse {
@@ -487,7 +605,7 @@ function cloneNotes(notes: NotesGrid): NotesGrid {
 }
 
 function cloneBoardSnapshot(snapshot: BoardSnapshot): BoardSnapshot {
-  return createBoardSnapshot(snapshot.grid, snapshot.notes, snapshot.selectedIndex, snapshot.lowConfidence);
+  return createBoardSnapshot(snapshot.grid, snapshot.marks, snapshot.selectedIndex, snapshot.lowConfidence);
 }
 
 function notesContainAnyCandidate(notes: NotesGrid): boolean {

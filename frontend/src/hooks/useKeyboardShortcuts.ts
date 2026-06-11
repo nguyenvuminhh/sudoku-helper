@@ -2,9 +2,17 @@
 
 import { useEffect, useRef } from "react";
 
+import type { EntryMode } from "../lib/constants";
 import { isEditableTarget } from "../lib/dom";
 import { resolveKeyboardInput, resolveNavigationKey } from "../lib/sudoku-state";
 import type { SudokuGame } from "./useSudokuGame";
+
+const MODE_KEYS: Record<string, EntryMode> = {
+  z: "value",
+  x: "corner",
+  c: "center",
+  v: "color"
+};
 
 export function useKeyboardShortcuts(game: SudokuGame) {
   const gameRef = useRef(game);
@@ -39,6 +47,15 @@ export function useKeyboardShortcuts(game: SudokuGame) {
         return;
       }
 
+      // Tab cycles the entry mode (Normal, Corner, Center, Color) while solving.
+      if (event.key === "Tab") {
+        if (current.isSolving) {
+          event.preventDefault();
+          current.cycleEntryMode();
+        }
+        return;
+      }
+
       // P pauses or resumes the solve clock.
       if (event.key.toLowerCase() === "p") {
         if (current.isSolving) {
@@ -48,32 +65,29 @@ export function useKeyboardShortcuts(game: SudokuGame) {
         return;
       }
 
-      // Tab toggles pencil (notes) mode while solving.
-      if (event.key === "Tab") {
+      // Z, X, C, V select the entry mode directly while solving.
+      const mode = MODE_KEYS[event.key.toLowerCase()];
+      if (mode && !event.shiftKey) {
         if (current.isSolving) {
           event.preventDefault();
-          current.toggleNotesMode();
+          current.changeEntryMode(mode);
         }
         return;
       }
 
-      // Arrow keys and WASD move the cell selection.
+      // Arrow keys and WASD move the cell selection; Shift extends it.
       const direction = resolveNavigationKey(event.key);
       if (direction) {
         event.preventDefault();
-        current.moveSelectionBy(direction);
+        current.moveSelectionBy(direction, event.shiftKey);
         return;
       }
 
-      // Enter places the active quick-fill digit in the selected cell.
+      // Enter applies the locked quick-fill digit to the selection.
       if (event.key === "Enter") {
-        if (
-          current.quickFillMode &&
-          current.quickFillDigit !== null &&
-          current.grid[current.selectedIndex] !== current.quickFillDigit
-        ) {
+        if (current.quickFillMode && current.quickFillDigit !== null) {
           event.preventDefault();
-          current.placeQuickFillAt(current.selectedIndex);
+          current.placeQuickFillOnSelection();
         }
         return;
       }

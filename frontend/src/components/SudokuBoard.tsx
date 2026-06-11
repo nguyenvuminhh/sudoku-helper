@@ -1,7 +1,8 @@
 "use client";
 
+import { PAINT_COLOR_NAMES } from "../lib/constants";
 import type { HintPreview } from "../lib/hints";
-import type { NotesGrid, SudokuGrid, GivenMask } from "../lib/sudoku-state";
+import type { BoardMarks, SudokuGrid, GivenMask } from "../lib/sudoku-state";
 
 export type BoardHighlights = {
   conflictIndexes: Set<number>;
@@ -16,45 +17,53 @@ export type BoardHighlights = {
 
 export function SudokuBoard({
   grid,
-  notes,
+  marks,
   givenMask,
   isSolving,
   selectedIndex,
-  editingNotes,
+  selectedIndexSet,
   activeHighlightDigit,
   lowConfidence,
   hintPreview,
   highlights,
   paused,
+  onCellPointerDown,
+  onCellPointerEnter,
   onCellClick
 }: {
   grid: SudokuGrid;
-  notes: NotesGrid;
+  marks: BoardMarks;
   givenMask: GivenMask;
   isSolving: boolean;
   selectedIndex: number;
-  editingNotes: boolean;
+  selectedIndexSet: Set<number>;
   activeHighlightDigit: number | null;
   lowConfidence: number[];
   hintPreview: HintPreview | null;
   highlights: BoardHighlights;
   paused: boolean;
-  onCellClick: (index: number) => void;
+  onCellPointerDown: (index: number, additive: boolean) => void;
+  onCellPointerEnter: (index: number) => void;
+  onCellClick: (index: number, additive: boolean) => void;
 }) {
   return (
     <div className={paused ? "sudoku-board paused" : "sudoku-board"} role="grid" aria-label="Sudoku grid">
       {grid.map((value, index) => {
         const row = Math.floor(index / 9);
         const col = index % 9;
-        const noteValues = notes[index] ?? [];
+        const cornerValues = marks.corner[index] ?? [];
+        const centerValues = marks.center[index] ?? [];
+        const paintColor = marks.colors[index] ?? null;
         const isGiven = isSolving && givenMask[index];
         const shouldShowHintPreview = hintPreview?.index === index;
+        const inSelection = selectedIndexSet.has(index);
         const classes = [
           "sudoku-cell",
           highlights.peerIndexes.has(index) ? "peer-cell" : "",
+          paintColor ? `cell-paint-${paintColor}` : "",
+          inSelection && selectedIndex !== index ? "in-selection" : "",
           selectedIndex === index ? "selected" : "",
           isGiven ? "locked-given" : "",
-          editingNotes && selectedIndex === index ? "note-target" : "",
           highlights.matchingValueIndexes.has(index) ? "same-digit-cell" : "",
           highlights.matchingNoteIndexes.has(index) ? "same-digit-note-cell" : "",
           highlights.conflictIndexes.has(index) ? "conflict" : "",
@@ -70,7 +79,9 @@ export function SudokuBoard({
         const ariaDetails = [
           value ? `${value}${isGiven ? ", loaded clue" : ""}` : "",
           !value && shouldShowHintPreview ? `suggested ${hintPreview.digit}` : "",
-          !value && noteValues.length ? `notes ${noteValues.join(" ")}` : ""
+          !value && cornerValues.length ? `corner notes ${cornerValues.join(" ")}` : "",
+          !value && centerValues.length ? `notes ${centerValues.join(" ")}` : "",
+          paintColor ? `${PAINT_COLOR_NAMES[paintColor]} highlight` : ""
         ].filter(Boolean);
         const ariaValue = ariaDetails.length ? `, ${ariaDetails.join(", ")}` : "";
 
@@ -81,7 +92,9 @@ export function SudokuBoard({
             type="button"
             role="gridcell"
             aria-label={`Row ${row + 1}, column ${col + 1}${ariaValue}`}
-            onClick={() => onCellClick(index)}
+            onPointerDown={(event) => onCellPointerDown(index, event.ctrlKey || event.metaKey || event.altKey)}
+            onPointerEnter={() => onCellPointerEnter(index)}
+            onClick={(event) => onCellClick(index, event.ctrlKey || event.metaKey || event.altKey)}
           >
             {value ? (
               <strong>{value}</strong>
@@ -92,7 +105,8 @@ export function SudokuBoard({
                     {hintPreview.digit}
                   </span>
                 ) : null}
-                {noteValues.length ? <NoteMarks activeDigit={activeHighlightDigit} values={noteValues} /> : null}
+                {cornerValues.length ? <CornerMarks activeDigit={activeHighlightDigit} values={cornerValues} /> : null}
+                {centerValues.length ? <CenterMarks activeDigit={activeHighlightDigit} values={centerValues} /> : null}
               </>
             )}
           </button>
@@ -102,12 +116,42 @@ export function SudokuBoard({
   );
 }
 
-function NoteMarks({ activeDigit, values }: { activeDigit: number | null; values: number[] }) {
+/* Corner marks fill the cell edge positions in reading order: the first four
+   notes claim the corners, later ones the edge midpoints, the ninth the
+   middle. */
+const CORNER_SLOTS = [
+  "slot-tl",
+  "slot-tr",
+  "slot-bl",
+  "slot-br",
+  "slot-tc",
+  "slot-bc",
+  "slot-ml",
+  "slot-mr",
+  "slot-cc"
+] as const;
+
+function CornerMarks({ activeDigit, values }: { activeDigit: number | null; values: number[] }) {
   return (
-    <span className="notes" aria-hidden="true">
-      {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((digit) => (
-        <span className={values.includes(digit) && digit === activeDigit ? "same-digit-note" : ""} key={digit}>
-          {values.includes(digit) ? digit : ""}
+    <span className="corner-marks" aria-hidden="true">
+      {values.slice(0, 9).map((digit, position) => (
+        <span
+          className={`${CORNER_SLOTS[position]}${digit === activeDigit ? " same-digit-note" : ""}`}
+          key={digit}
+        >
+          {digit}
+        </span>
+      ))}
+    </span>
+  );
+}
+
+function CenterMarks({ activeDigit, values }: { activeDigit: number | null; values: number[] }) {
+  return (
+    <span className={values.length > 5 ? "center-marks dense" : "center-marks"} aria-hidden="true">
+      {values.map((digit) => (
+        <span className={digit === activeDigit ? "same-digit-note" : ""} key={digit}>
+          {digit}
         </span>
       ))}
     </span>
