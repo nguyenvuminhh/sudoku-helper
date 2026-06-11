@@ -3,32 +3,44 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
+from huggingface_hub import hf_hub_download
+
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from backend.app.ocr import default_digit_model_external_data_path, default_digit_model_path
+from backend.app.ocr import DEFAULT_DIGIT_MODEL_FILENAME, DEFAULT_DIGIT_MODEL_REPO, default_digit_model_path
 
 
 def main() -> None:
-    model_path = default_digit_model_path()
-    external_data_path = default_digit_model_external_data_path()
-    missing = [path for path in [model_path, external_data_path] if not path.exists()]
-    if missing:
-        missing_list = "\n".join(f"- {path}" for path in missing)
-        raise SystemExit(
-            "\n".join(
-                [
-                    "Required Sudoku digit model files are missing:",
-                    missing_list,
-                    "",
-                    "Train the model first, for example:",
-                    "python3 scripts/train_sudoku_digit_model.py --dataset data/training/printed-digits-dataset --output data/models/sudoku-digits/sudoku-digits.onnx",
-                ]
-            )
+    target = default_digit_model_path()
+    target.parent.mkdir(parents=True, exist_ok=True)
+    downloaded = Path(
+        hf_hub_download(
+            repo_id=DEFAULT_DIGIT_MODEL_REPO,
+            filename=DEFAULT_DIGIT_MODEL_FILENAME,
+            local_dir=target.parent,
         )
+    )
+    if downloaded != target:
+        target.write_bytes(downloaded.read_bytes())
+    _write_license_note(target.parent)
+    print(f"Downloaded {DEFAULT_DIGIT_MODEL_REPO}/{DEFAULT_DIGIT_MODEL_FILENAME} to {target}")
 
-    print(f"Found Sudoku digit model at {model_path}")
-    print(f"Found Sudoku digit model external data at {external_data_path}")
+
+def _write_license_note(target_dir: Path) -> None:
+    note = target_dir / "LICENSE-NOTE.txt"
+    note.write_text(
+        "\n".join(
+            [
+                "Model: onnxmodelzoo/mnist-8",
+                "File: mnist-8.onnx",
+                "Source: https://huggingface.co/onnxmodelzoo/mnist-8",
+                "License listed by Hugging Face: Apache-2.0",
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
 
 
 if __name__ == "__main__":

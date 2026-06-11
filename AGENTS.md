@@ -2,12 +2,11 @@
 
 ## Project
 
-Puzzle Hint is a Sudoku-first hint desktop app.
+Puzzle Hint is a Sudoku-first hint website.
 
 - Backend: FastAPI in `backend/app`.
 - Frontend: static-exported Next.js app in `frontend`.
-- Desktop shell: Tauri in `desktop/src-tauri`.
-- Production shape: run `make desktop-build` to build the frontend, backend sidecar, and current-platform installer.
+- Production shape: run `npm run build` in `frontend`, then FastAPI serves `frontend/out`.
 
 ## Commands
 
@@ -25,22 +24,29 @@ npm run typecheck
 npm run build
 ```
 
-Run the desktop app in development mode:
+Run hot-reload development servers from the repo root in two terminals:
 
 ```bash
-make desktop-dev
+make be
 ```
 
-Install the required pretrained digit classifier:
+```bash
+make fe
+```
+
+Install the optional pretrained digit classifier:
 
 ```bash
 make model
 ```
 
-Build the desktop installer for the current platform:
+Run the production-style app:
 
 ```bash
-make desktop-build
+cd frontend
+npm run build
+cd ..
+python3 -m uvicorn backend.app.main:app --host 127.0.0.1 --port 8001
 ```
 
 ## Editing Guidance
@@ -54,7 +60,7 @@ make desktop-build
 - Image import should use OpenCV grid extraction before digit classification.
 - Do not add non-grid OCR paths for image import.
 - Image import must ignore pencil-note/candidate digits and classify only large cell digits.
-- Image import requires `data/models/sudoku-digits/sudoku-digits.onnx` and `data/models/sudoku-digits/sudoku-digits.onnx.data`; `make model` verifies those generated files exist.
+- Prefer `data/models/onnx-mnist/mnist-8.onnx` when installed; it is downloaded by `make model` and Hugging Face lists it as `Apache-2.0`.
 - Treat image import as an editable assistant, not fully trustworthy OCR.
 
 ## UX Rules

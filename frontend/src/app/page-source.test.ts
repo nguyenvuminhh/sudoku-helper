@@ -200,22 +200,6 @@ describe("sudoku tutor layout source", () => {
     expect(applyLabel).toBeGreaterThan(hintPanelDefinition);
     expect(pageSource.indexOf("onClick={onApplyHint}")).toBeGreaterThan(hintPanelDefinition);
   });
-
-  it("sends uploaded images directly to backend OCR", () => {
-    const uploadBody = sourceBetween("async function handleUpload", "function loadSample");
-
-    expect(uploadBody).toContain("recognizeImage(file)");
-    expect(uploadBody).not.toContain("recognizeUploadedImage");
-    expect(pageSource).not.toContain("../lib/client-ocr");
-    expect(pageSource).not.toContain("recognizeImageInBrowser");
-    expect(pageSource).not.toContain("preloadBrowserOcr");
-  });
-
-  it("opens the upload picker without preloading browser OCR", () => {
-    expect(pageSource).not.toContain("function handleUploadClick");
-    expect(pageSource).not.toContain("onClick={handleUploadClick}");
-    expect(pageSource).toContain("onClick={() => fileInputRef.current?.click()}");
-  });
 });
 
 function sourceBetween(start: string, end: string): string {

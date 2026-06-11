@@ -2,9 +2,8 @@ import unittest
 from unittest.mock import patch
 
 from backend.app.ocr import (
-    DEFAULT_DIGIT_MODEL_EXTERNAL_DATA_FILENAME,
-    DigitClassifierUnavailable,
     OnnxDigitClassifier,
+    TemplateDigitClassifier,
     default_digit_model_path,
     extract_sudoku_cells,
     load_digit_classifier,
@@ -49,17 +48,32 @@ class OcrTests(unittest.TestCase):
         self.assertEqual(cells[80].col, 9)
         self.assertTrue(cells[0].has_ink)
 
+    def test_template_digit_classifier_recognizes_isolated_digit(self):
+        image_bytes = make_synthetic_sudoku_image({(1, 1): 7})
+        cell = extract_sudoku_cells(image_bytes)[0]
+
+        prediction = TemplateDigitClassifier().predict(cell.image)
+
+        self.assertEqual(prediction.value, 7)
+        self.assertGreater(prediction.confidence, 0.5)
+
     def test_pencil_notes_are_ignored_as_blank_cells(self):
         image_bytes = make_synthetic_sudoku_image({}, notes={(1, 1): [1, 2, 6, 9]})
         cell = extract_sudoku_cells(image_bytes)[0]
 
+        prediction = TemplateDigitClassifier().predict(cell.image)
+
         self.assertFalse(cell.has_ink)
+        self.assertIsNone(prediction.value)
 
     def test_large_digit_is_used_when_cell_also_has_notes(self):
         image_bytes = make_synthetic_sudoku_image({(1, 1): 6}, notes={(1, 1): [1, 2, 7, 9]})
         cell = extract_sudoku_cells(image_bytes)[0]
 
+        prediction = TemplateDigitClassifier().predict(cell.image)
+
         self.assertTrue(cell.has_ink)
+        self.assertEqual(prediction.value, 6)
 
     def test_load_digit_classifier_prefers_downloaded_default_model(self):
         with (
@@ -70,50 +84,15 @@ class OcrTests(unittest.TestCase):
             load_digit_classifier()
 
         classifier.assert_called_once_with(default_digit_model_path())
-        self.assertEqual(default_digit_model_path().name, "sudoku-digits.onnx")
-        self.assertIn("sudoku-digits", str(default_digit_model_path()))
-
-    def test_load_digit_classifier_requires_default_external_data_file(self):
-        with (
-            patch("backend.app.ocr.Path.exists", side_effect=[True, False]),
-            patch.dict("os.environ", {}, clear=True),
-        ):
-            with self.assertRaises(DigitClassifierUnavailable) as context:
-                load_digit_classifier()
-
-        self.assertIn(DEFAULT_DIGIT_MODEL_EXTERNAL_DATA_FILENAME, str(context.exception))
 
     def test_load_digit_classifier_uses_env_model_path(self):
         with (
-            patch("backend.app.ocr.Path.exists", return_value=True),
             patch("backend.app.ocr.OnnxDigitClassifier") as classifier,
             patch.dict("os.environ", {"SUDOKU_DIGIT_MODEL": "/tmp/model.onnx"}, clear=True),
         ):
             load_digit_classifier()
 
         classifier.assert_called_once_with("/tmp/model.onnx")
-
-    def test_load_digit_classifier_requires_configured_env_model(self):
-        with (
-            patch("backend.app.ocr.Path.exists", return_value=False),
-            patch.dict("os.environ", {"SUDOKU_DIGIT_MODEL": "/tmp/missing.onnx"}, clear=True),
-        ):
-            with self.assertRaises(DigitClassifierUnavailable) as context:
-                load_digit_classifier()
-
-        self.assertIn("SUDOKU_DIGIT_MODEL", str(context.exception))
-        self.assertIn("/tmp/missing.onnx", str(context.exception))
-
-    def test_load_digit_classifier_requires_downloaded_default_model(self):
-        with (
-            patch("backend.app.ocr.Path.exists", return_value=False),
-            patch.dict("os.environ", {}, clear=True),
-        ):
-            with self.assertRaises(DigitClassifierUnavailable) as context:
-                load_digit_classifier()
-
-        self.assertIn("make model", str(context.exception))
-        self.assertIn(str(default_digit_model_path()), str(context.exception))
 
     def test_load_digit_classifier_reuses_classifier_instance(self):
         with (

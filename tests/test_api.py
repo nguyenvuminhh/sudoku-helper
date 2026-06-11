@@ -1,9 +1,10 @@
+import tempfile
 import unittest
+from pathlib import Path
 from unittest.mock import patch
 
 from fastapi.testclient import TestClient
 
-from backend.app.ocr import DigitClassifierUnavailable
 from backend.app.sudoku.engine import Attribution, DifficultyLevel, GeneratedPuzzle
 from backend.app.sudoku.grid import candidate_map, parse_grid
 from backend.app.main import _parse_cors_origins, create_app
@@ -36,7 +37,7 @@ LOCKED_CANDIDATE_GRID = (
 
 class ApiTests(unittest.TestCase):
     def test_hint_endpoint_returns_structured_hint(self):
-        client = TestClient(create_app())
+        client = TestClient(create_app(static_dir=None))
 
         response = client.post("/api/sudoku/hint", json={"grid": REFERENCE_GRID})
 
@@ -47,7 +48,7 @@ class ApiTests(unittest.TestCase):
         self.assertEqual(body["action"]["digit"], 3)
 
     def test_hint_endpoint_prefers_engine_hint_when_available(self):
-        client = TestClient(create_app())
+        client = TestClient(create_app(static_dir=None))
         engine_hint = {
             "technique": {"id": "x_wing", "name": "X-Wing", "rank": 32},
             "action": {
@@ -74,7 +75,7 @@ class ApiTests(unittest.TestCase):
         self.assertEqual(body["summary"], "Remove 2 from R1C1 using X-Wing.")
 
     def test_hint_endpoint_uses_candidate_payload_to_skip_applied_elimination(self):
-        client = TestClient(create_app())
+        client = TestClient(create_app(static_dir=None))
         candidates = {
             str(index): sorted(digits)
             for index, digits in candidate_map(parse_grid(LOCKED_CANDIDATE_GRID)).items()
@@ -99,7 +100,7 @@ class ApiTests(unittest.TestCase):
         )
 
     def test_invalid_grid_blocks_hinting(self):
-        client = TestClient(create_app())
+        client = TestClient(create_app(static_dir=None))
 
         response = client.post("/api/sudoku/hint", json={"grid": "11" + "0" * 79})
 
@@ -107,7 +108,7 @@ class ApiTests(unittest.TestCase):
         self.assertIn("conflicts", response.json()["detail"][0])
 
     def test_generate_endpoint_returns_rated_puzzle(self):
-        client = TestClient(create_app())
+        client = TestClient(create_app(static_dir=None))
         generated = GeneratedPuzzle(
             puzzle="0" * 80 + "1",
             solution="1" * 81,
@@ -131,38 +132,27 @@ class ApiTests(unittest.TestCase):
         self.assertEqual(body["attribution"]["name"], "Ukodus sudoku-core")
 
     def test_generate_endpoint_reports_missing_engine(self):
-        client = TestClient(create_app())
+        client = TestClient(create_app(static_dir=None))
 
         response = client.post("/api/sudoku/generate", json={"level": "easy", "seed": 11})
 
         self.assertEqual(response.status_code, 503)
         self.assertIn("engine", response.json()["detail"][0]["message"].lower())
 
-    def test_ocr_endpoint_reports_missing_required_digit_model(self):
-        client = TestClient(create_app())
+    def test_create_app_serves_static_frontend_build(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            static_dir = Path(tmp)
+            (static_dir / "index.html").write_text("<main>Sudoku tutor</main>", encoding="utf-8")
+            client = TestClient(create_app(static_dir=static_dir))
 
-        with patch(
-            "backend.app.main.recognize_sudoku_image",
-            side_effect=DigitClassifierUnavailable("Digit classifier model missing. Run make model."),
-        ):
-            response = client.post(
-                "/api/sudoku/ocr",
-                files={"file": ("grid.png", b"not-a-real-image", "image/png")},
-            )
+            response = client.get("/")
 
-        self.assertEqual(response.status_code, 503)
-        self.assertIn("make model", response.json()["detail"][0]["message"])
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("Sudoku tutor", response.text)
 
-    def test_api_app_does_not_serve_frontend_routes(self):
-        client = TestClient(create_app())
-
-        response = client.get("/")
-
-        self.assertEqual(response.status_code, 404)
-
-    def test_cors_origins_are_configurable(self):
-        origin = "tauri://localhost"
-        client = TestClient(create_app(cors_origins=[origin]))
+    def test_cors_origins_are_configurable_for_split_frontend_deploy(self):
+        origin = "https://example.github.io"
+        client = TestClient(create_app(static_dir=None, cors_origins=[origin]))
 
         response = client.options(
             "/api/health",
