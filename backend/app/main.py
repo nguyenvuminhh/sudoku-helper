@@ -7,7 +7,7 @@ from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
-from backend.app.ocr import recognize_sudoku_image
+from backend.app.ocr import DigitClassifierUnavailable, recognize_sudoku_image
 from backend.app.sudoku.engine import EngineError, EngineUnavailable, generate_puzzle, hint_with_engine
 from backend.app.sudoku.grid import candidate_map, parse_candidate_map, parse_grid, validate_grid
 from backend.app.sudoku.solver import next_hint
@@ -83,7 +83,10 @@ def create_app(cors_origins: list[str] | None = None) -> FastAPI:
     @app.post("/api/sudoku/ocr")
     async def ocr(file: UploadFile = File(...)) -> dict[str, object]:
         image_bytes = await file.read()
-        return recognize_sudoku_image(image_bytes, file.filename or "upload").to_dict()
+        try:
+            return recognize_sudoku_image(image_bytes, file.filename or "upload").to_dict()
+        except DigitClassifierUnavailable as exc:
+            raise HTTPException(status_code=503, detail=[{"message": str(exc)}]) from exc
 
     return app
 

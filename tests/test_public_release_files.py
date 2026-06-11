@@ -56,9 +56,9 @@ class PublicReleaseFilesTests(unittest.TestCase):
             "OpenCV",
             "NumPy",
             "onnxruntime",
-            "Hugging Face Hub",
-            "onnxmodelzoo/mnist-8",
-            "https://huggingface.co/onnxmodelzoo/mnist-8",
+            "Printed Numerical Digits Image Dataset",
+            "https://github.com/kaydee0502/printed-digits-dataset",
+            "sudoku-digits.onnx",
             "Apache-2.0",
             "Next.js",
             "React",
@@ -106,7 +106,9 @@ class PublicReleaseFilesTests(unittest.TestCase):
         ]
         forbidden_strings = [
             "onnxruntime-web",
+            "onnxmodelzoo/mnist-8",
             "onnxmodelzoo/mnist-12",
+            "data/models/onnx-mnist",
             "frontend/public/models/mnist-12.onnx",
             "frontend/public/vendor/opencv.js",
             "NEXT_PUBLIC_SUDOKU_DIGIT_MODEL_PATH",
@@ -134,6 +136,34 @@ class PublicReleaseFilesTests(unittest.TestCase):
             "generic ocr fallback",
             "Pillow",
             "from PIL",
+            "TemplateDigitClassifier",
+            "template digit classifier",
+            "works without a trained model",
+        ]
+
+        for path in checked_files:
+            content = path.read_text(encoding="utf-8")
+            for text in forbidden_strings:
+                with self.subTest(path=path.relative_to(ROOT), text=text):
+                    self.assertNotIn(text, content)
+
+    def test_public_release_files_do_not_reference_old_mnist_model(self):
+        checked_files = [
+            ROOT / "AGENTS.md",
+            ROOT / "Makefile",
+            ROOT / "README.md",
+            ROOT / "THIRD_PARTY_NOTICES.md",
+            ROOT / "backend" / "app" / "ocr.py",
+            ROOT / "desktop" / "scripts" / "build-backend-sidecar.mjs",
+            ROOT / "scripts" / "download_digit_model.py",
+        ]
+
+        forbidden_strings = [
+            "onnxmodelzoo/mnist-8",
+            "mnist-8.onnx",
+            "data/models/onnx-mnist",
+            "Hugging Face Hub",
+            "huggingface_hub",
         ]
 
         for path in checked_files:
@@ -152,6 +182,12 @@ class PublicReleaseFilesTests(unittest.TestCase):
         requirements = (ROOT / "requirements.txt").read_text(encoding="utf-8")
 
         self.assertRegex(requirements, r"(?m)^httpx[<>=]")
+
+    def test_backend_dependencies_include_required_onnx_classifier_runtime(self):
+        requirements = (ROOT / "requirements.txt").read_text(encoding="utf-8")
+
+        self.assertRegex(requirements, r"(?m)^onnxruntime[<>=]")
+        self.assertNotRegex(requirements, r"(?m)^huggingface_hub[<>=]")
 
     def test_next_config_has_no_github_pages_base_path(self):
         next_config = (ROOT / "frontend" / "next.config.ts").read_text(encoding="utf-8")

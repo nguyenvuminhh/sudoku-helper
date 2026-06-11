@@ -7,7 +7,7 @@ summary for project maintenance and public releases, not legal advice.
 
 Dependency versions are controlled by:
 
-- Python backend: `requirements.txt` and `requirements-model.txt`
+- Python backend: `requirements.txt`
 - Frontend: `frontend/package.json` and `frontend/package-lock.json`
 - Desktop packaging: `requirements-desktop.txt`, `desktop/package.json`,
   `desktop/package-lock.json`, and `desktop/src-tauri/Cargo.toml`
@@ -30,28 +30,29 @@ dependencies and their transitive dependency trees:
 
 The product direction keeps OpenCV grid extraction as the image import path.
 
-## Optional Model Runtime
+## Model Runtime
 
-`requirements-model.txt` enables the optional ONNX digit classifier support:
+`requirements.txt` includes the required ONNX digit classifier support:
 
 | Project | Purpose | SPDX license | Source |
 | --- | --- | --- | --- |
-| onnxruntime | Runs the optional ONNX digit classifier | MIT | https://github.com/microsoft/onnxruntime |
-| Hugging Face Hub (`huggingface_hub`) | Downloads the optional model in `scripts/download_digit_model.py` | Apache-2.0 | https://github.com/huggingface/huggingface_hub |
+| onnxruntime | Runs the ONNX digit classifier | MIT | https://github.com/microsoft/onnxruntime |
 
-## Downloaded ONNX Model
+## Trained ONNX Model
 
-`make model` runs `scripts/download_digit_model.py`, which downloads:
+`make model` runs `scripts/download_digit_model.py`, which verifies that the
+generated Sudoku digit classifier files exist:
 
-- Model: `onnxmodelzoo/mnist-8`
-- File: `mnist-8.onnx`
-- Local path in generated runtime artifacts: `data/models/onnx-mnist/mnist-8.onnx`
-- Source: https://huggingface.co/onnxmodelzoo/mnist-8
-- License listed by Hugging Face: Apache-2.0
+- Model file: `data/models/sudoku-digits/sudoku-digits.onnx`
+- External model data: `data/models/sudoku-digits/sudoku-digits.onnx.data`
+- Training script: `scripts/train_sudoku_digit_model.py`
+- Dataset: Printed Numerical Digits Image Dataset
+- Dataset source: https://github.com/kaydee0502/printed-digits-dataset
+- Dataset license: MIT
 
-The repository ignores `data/models/` and `data/img/`. The download script
-also writes `data/models/onnx-mnist/LICENSE-NOTE.txt` beside the model inside
-generated runtime artifacts.
+The repository ignores generated `data/models/`, `data/img/`, and
+`data/training/` artifacts. The trained model is distributed as generated
+runtime data, not source code.
 
 ## Sudoku Generation Engine
 

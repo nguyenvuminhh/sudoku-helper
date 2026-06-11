@@ -3,6 +3,7 @@ from unittest.mock import patch
 
 from fastapi.testclient import TestClient
 
+from backend.app.ocr import DigitClassifierUnavailable
 from backend.app.sudoku.engine import Attribution, DifficultyLevel, GeneratedPuzzle
 from backend.app.sudoku.grid import candidate_map, parse_grid
 from backend.app.main import _parse_cors_origins, create_app
@@ -136,6 +137,21 @@ class ApiTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 503)
         self.assertIn("engine", response.json()["detail"][0]["message"].lower())
+
+    def test_ocr_endpoint_reports_missing_required_digit_model(self):
+        client = TestClient(create_app())
+
+        with patch(
+            "backend.app.main.recognize_sudoku_image",
+            side_effect=DigitClassifierUnavailable("Digit classifier model missing. Run make model."),
+        ):
+            response = client.post(
+                "/api/sudoku/ocr",
+                files={"file": ("grid.png", b"not-a-real-image", "image/png")},
+            )
+
+        self.assertEqual(response.status_code, 503)
+        self.assertIn("make model", response.json()["detail"][0]["message"])
 
     def test_api_app_does_not_serve_frontend_routes(self):
         client = TestClient(create_app())

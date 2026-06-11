@@ -74,17 +74,45 @@ image upload
 -> editable correction grid
 ```
 
-By default the backend uses a lightweight OpenCV template digit classifier so it
-works without a trained model. For better accuracy, install the optional
-pretrained ONNX classifier:
+The backend uses the trained Sudoku-specific ONNX classifier by default. Verify
+that the generated model files exist before running image import:
 
 ```bash
 make model
 ```
 
-That downloads `onnxmodelzoo/mnist-8` from Hugging Face into `data/models/onnx-mnist/mnist-8.onnx`. Hugging Face lists this model as `Apache-2.0`. When that file exists, the backend uses it automatically. You can override the ONNX model path with `SUDOKU_DIGIT_MODEL=/path/to/model.onnx`.
+Image import requires `data/models/sudoku-digits/sudoku-digits.onnx` and its
+external data file `data/models/sudoku-digits/sudoku-digits.onnx.data`, unless
+you override the ONNX model path with `SUDOKU_DIGIT_MODEL=/path/to/model.onnx`.
 
-The bundled MNIST model predicts labels `0..9`; blank handling is done before model inference by OpenCV. A predicted `0` is treated as empty because Sudoku cells only contain `1..9`.
+The bundled Sudoku model predicts labels `0..9`; class `0` means blank/no large
+digit. Blank handling also runs before model inference by OpenCV.
+
+To train or replace the model, install the training-only dependencies in your
+training environment:
+
+```bash
+python3 -m pip install torch onnx onnxscript pillow
+```
+
+Then run:
+
+```bash
+python3 scripts/train_sudoku_digit_model.py \
+  --dataset /path/to/printed-digits-dataset \
+  --dataset /path/to/chars74k \
+  --font /path/to/font.ttf \
+  --output data/models/sudoku-digits/sudoku-digits.onnx
+```
+
+The training script treats class `0` as blank/no large digit and classes `1`-`9`
+as printed Sudoku digits. It filters Chars74K to printed digit classes `1`-`9`,
+loads blank/empty dataset folders as class `0`, and adds synthetic Sudoku cell
+examples with grid residue, crop jitter, blur, compression noise, and pencil-note
+negatives. Use the trained model with
+`SUDOKU_DIGIT_MODEL=data/models/sudoku-digits/sudoku-digits.onnx`.
+Keep the generated `.onnx.data` file beside the `.onnx` file; ONNX Runtime loads
+the external weight data from that companion file.
 
 The importer intentionally reads only large given/entered digits. Small candidate notes inside a Sudoku cell are ignored.
 

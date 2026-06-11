@@ -5,11 +5,18 @@ import { fileURLToPath } from "node:url";
 
 const BACKEND_NAME = "puzzle-hint-backend";
 const TAURI_BINARIES_RELATIVE_DIR = "desktop/src-tauri/binaries";
+const MODEL_DATA_DESTINATION = "data/models/sudoku-digits";
+const MODEL_RELATIVE_PATHS = [
+  "data/models/sudoku-digits/sudoku-digits.onnx",
+  "data/models/sudoku-digits/sudoku-digits.onnx.data"
+];
+const TRAINING_ONLY_MODULES = ["torch", "torchvision", "PIL", "onnx", "onnxscript", "onnx_ir"];
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const desktopDir = path.resolve(scriptDir, "..");
 const rootDir = path.resolve(desktopDir, "..");
 const binariesDir = path.join(rootDir, TAURI_BINARIES_RELATIVE_DIR);
 const extension = process.platform === "win32" ? ".exe" : "";
+const pyinstallerDataSeparator = process.platform === "win32" ? ";" : ":";
 
 function run(command, args, options = {}) {
   return execFileSync(command, args, {
@@ -77,6 +84,11 @@ function assertExists(filePath, label) {
 }
 
 const pyinstaller = pythonExecutable();
+const modelPaths = MODEL_RELATIVE_PATHS.map((relativePath) => path.join(rootDir, relativePath));
+for (const modelPath of modelPaths) {
+  assertExists(modelPath, "Required ONNX digit model");
+}
+
 console.log(`Building ${BACKEND_NAME} with PyInstaller...`);
 execFileSync(
   pyinstaller,
@@ -88,6 +100,11 @@ execFileSync(
     "--onefile",
     "--name",
     BACKEND_NAME,
+    ...modelPaths.flatMap((modelPath) => [
+      "--add-data",
+      `${modelPath}${pyinstallerDataSeparator}${MODEL_DATA_DESTINATION}`
+    ]),
+    ...TRAINING_ONLY_MODULES.flatMap((moduleName) => ["--exclude-module", moduleName]),
     path.join("backend", "app", "desktop_server.py")
   ],
   {

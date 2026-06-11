@@ -72,6 +72,22 @@ class DesktopReleaseFilesTests(unittest.TestCase):
         self.assertIn("puzzle-hint-backend", script)
         self.assertIn("desktop/src-tauri/binaries", script)
 
+    def test_desktop_build_script_bundles_required_digit_model(self):
+        script = (ROOT / "desktop" / "scripts" / "build-backend-sidecar.mjs").read_text(encoding="utf-8")
+
+        self.assertIn("data/models/sudoku-digits/sudoku-digits.onnx", script)
+        self.assertIn("data/models/sudoku-digits/sudoku-digits.onnx.data", script)
+        self.assertIn("--add-data", script)
+        self.assertIn("data/models/sudoku-digits", script)
+
+    def test_desktop_build_script_excludes_training_only_ml_packages(self):
+        script = (ROOT / "desktop" / "scripts" / "build-backend-sidecar.mjs").read_text(encoding="utf-8")
+
+        for module in ["torch", "torchvision", "PIL", "onnx", "onnxscript", "onnx_ir"]:
+            with self.subTest(module=module):
+                self.assertIn("--exclude-module", script)
+                self.assertIn(module, script)
+
     def test_gitignore_excludes_generated_desktop_artifacts(self):
         gitignore = (ROOT / ".gitignore").read_text(encoding="utf-8")
 
@@ -92,7 +108,7 @@ class DesktopReleaseFilesTests(unittest.TestCase):
         for target in [
             "desktop-deps:",
             "desktop-frontend:",
-            "desktop-backend:",
+            "desktop-backend: model",
             "desktop-dev:",
             "desktop-build:",
         ]:

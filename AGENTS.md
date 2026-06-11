@@ -31,7 +31,7 @@ Run the desktop app in development mode:
 make desktop-dev
 ```
 
-Install the optional pretrained digit classifier:
+Install the required pretrained digit classifier:
 
 ```bash
 make model
@@ -54,7 +54,7 @@ make desktop-build
 - Image import should use OpenCV grid extraction before digit classification.
 - Do not add non-grid OCR paths for image import.
 - Image import must ignore pencil-note/candidate digits and classify only large cell digits.
-- Prefer `data/models/onnx-mnist/mnist-8.onnx` when installed; it is downloaded by `make model` and Hugging Face lists it as `Apache-2.0`.
+- Image import requires `data/models/sudoku-digits/sudoku-digits.onnx` and `data/models/sudoku-digits/sudoku-digits.onnx.data`; `make model` verifies those generated files exist.
 - Treat image import as an editable assistant, not fully trustworthy OCR.
 
 ## UX Rules

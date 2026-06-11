@@ -6,7 +6,7 @@ test:
 	cd frontend && npm run typecheck
 
 model:
-	python3 -m pip install -r requirements-model.txt
+	python3 -m pip install -r requirements.txt
 	python3 scripts/download_digit_model.py
 
 engine:
@@ -21,7 +21,7 @@ desktop-deps:
 desktop-frontend:
 	cd frontend && NEXT_PUBLIC_API_BASE_URL=http://127.0.0.1:48731 npm run build
 
-desktop-backend:
+desktop-backend: model
 	cd desktop && npm run build:backend
 
 desktop-dev: desktop-backend

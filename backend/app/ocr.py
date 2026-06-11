@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import sys
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
@@ -10,10 +11,10 @@ from backend.app.sudoku.grid import parse_grid, validate_grid
 
 WARPED_GRID_SIZE = 450
 CLASSIFIER_SIZE = 28
-DEFAULT_DIGIT_MODEL_REPO = "onnxmodelzoo/mnist-8"
-DEFAULT_DIGIT_MODEL_FILENAME = "mnist-8.onnx"
+DEFAULT_DIGIT_MODEL_FILENAME = "sudoku-digits.onnx"
+DEFAULT_DIGIT_MODEL_EXTERNAL_DATA_FILENAME = "sudoku-digits.onnx.data"
 DEFAULT_DIGIT_MODEL_PATH = (
-    Path(__file__).resolve().parents[2] / "data" / "models" / "onnx-mnist" / DEFAULT_DIGIT_MODEL_FILENAME
+    Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parents[2])) / "data" / "models" / "sudoku-digits" / DEFAULT_DIGIT_MODEL_FILENAME
 )
 
 
@@ -57,21 +58,15 @@ class DigitClassifier(Protocol):
         """Return a blank/1-9 prediction for one pre-segmented Sudoku cell."""
 
 
+class DigitClassifierUnavailable(RuntimeError):
+    """Raised when the required ONNX digit classifier cannot be loaded."""
+
+
 def recognize_sudoku_image(image_bytes: bytes, filename: str) -> OcrResult:
     warnings: list[str] = []
     try:
         cells = extract_sudoku_cells(image_bytes)
-        classifier = load_digit_classifier()
-        ocr_cells = [_classify_cell(cell, classifier) for cell in cells]
-        warnings.extend(_grid_consistency_warnings(ocr_cells))
-
-        digit_count = sum(1 for cell in ocr_cells if cell.value is not None)
-        if digit_count == 0:
-            warnings.append("Grid was detected, but no digits were classified. Review the correction grid manually.")
-        else:
-            warnings.append("Grid detected with OpenCV. Review the classified digits before asking for a hint.")
-        return OcrResult(cells=ocr_cells, warnings=warnings)
-    except Exception as exc:  # noqa: BLE001 - optional CV dependencies and arbitrary uploads can fail many ways.
+    except Exception:  # noqa: BLE001 - OpenCV and arbitrary uploads can fail many ways.
         return OcrResult(
             cells=_empty_cells(),
             warnings=[
@@ -79,6 +74,17 @@ def recognize_sudoku_image(image_bytes: bytes, filename: str) -> OcrResult:
                 "Use a clean crop with the full outer border visible, or enter the puzzle manually in the correction grid.",
             ],
         )
+
+    classifier = load_digit_classifier()
+    ocr_cells = [_classify_cell(cell, classifier) for cell in cells]
+    warnings.extend(_grid_consistency_warnings(ocr_cells))
+
+    digit_count = sum(1 for cell in ocr_cells if cell.value is not None)
+    if digit_count == 0:
+        warnings.append("Grid was detected, but no digits were classified. Review the correction grid manually.")
+    else:
+        warnings.append("Grid detected with OpenCV. Review the classified digits before asking for a hint.")
+    return OcrResult(cells=ocr_cells, warnings=warnings)
 
 
 def extract_sudoku_cells(image_bytes: bytes) -> list[ExtractedCell]:
@@ -114,48 +120,41 @@ def extract_sudoku_cells(image_bytes: bytes) -> list[ExtractedCell]:
 
 @lru_cache(maxsize=1)
 def load_digit_classifier() -> DigitClassifier:
-    model_path = os.getenv("SUDOKU_DIGIT_MODEL")
-    if model_path:
-        return OnnxDigitClassifier(model_path)
-    downloaded_model = default_digit_model_path()
-    if downloaded_model.exists():
-        return OnnxDigitClassifier(downloaded_model)
-    return TemplateDigitClassifier()
+    configured_model = os.getenv("SUDOKU_DIGIT_MODEL")
+    model_path = Path(configured_model) if configured_model else default_digit_model_path()
+    if not model_path.exists():
+        if configured_model:
+            raise DigitClassifierUnavailable(
+                f"SUDOKU_DIGIT_MODEL points to a missing ONNX model: {model_path}."
+            )
+        raise DigitClassifierUnavailable(
+            f"Required Sudoku digit model is missing at {model_path}. Train it with `scripts/train_sudoku_digit_model.py`, then run `make model` before starting image import."
+        )
+    if not configured_model:
+        external_data_path = default_digit_model_external_data_path()
+        if not external_data_path.exists():
+            raise DigitClassifierUnavailable(
+                f"Required Sudoku digit model external data is missing at {external_data_path}. Keep {DEFAULT_DIGIT_MODEL_EXTERNAL_DATA_FILENAME} beside {DEFAULT_DIGIT_MODEL_FILENAME}."
+            )
+    return OnnxDigitClassifier(configured_model if configured_model else model_path)
 
 
 def default_digit_model_path() -> Path:
     return DEFAULT_DIGIT_MODEL_PATH
 
 
-class TemplateDigitClassifier:
-    def __init__(self) -> None:
-        self._templates = _build_digit_templates()
-
-    def predict(self, cell_image: object) -> DigitPrediction:
-        cv2, np = _cv2_np()
-        image = _ensure_uint8_cell(cell_image)
-        if _ink_ratio(image) < 0.018:
-            return DigitPrediction(value=None, confidence=0.96)
-
-        _, binary = cv2.threshold(image, 0, 255, cv2.THRESH_BINARY | cv2.THRESH_OTSU)
-        best_digit: int | None = None
-        best_score = float("inf")
-
-        for digit, template in self._templates.items():
-            score = float(np.mean((binary.astype("float32") - template.astype("float32")) ** 2))
-            if score < best_score:
-                best_digit = digit
-                best_score = score
-
-        confidence = max(0.05, min(0.99, 1.0 - best_score / 18000.0))
-        if confidence < 0.22:
-            return DigitPrediction(value=None, confidence=confidence)
-        return DigitPrediction(value=best_digit, confidence=confidence)
+def default_digit_model_external_data_path() -> Path:
+    return default_digit_model_path().with_name(DEFAULT_DIGIT_MODEL_EXTERNAL_DATA_FILENAME)
 
 
 class OnnxDigitClassifier:
     def __init__(self, model_path: str | Path) -> None:
-        import onnxruntime as ort  # type: ignore[import-not-found]
+        try:
+            import onnxruntime as ort  # type: ignore[import-not-found]
+        except ImportError as exc:
+            raise DigitClassifierUnavailable(
+                "onnxruntime is required for Sudoku image import. Install backend dependencies with `python3 -m pip install -r requirements.txt`."
+            ) from exc
 
         self._session = ort.InferenceSession(str(model_path), providers=["CPUExecutionProvider"])
         self._input = self._session.get_inputs()[0]
@@ -289,21 +288,6 @@ def _large_digit_contours(contours: object, image_shape: tuple[int, int]) -> lis
             large_contours.append(contour)
 
     return large_contours
-
-
-def _build_digit_templates() -> dict[int, object]:
-    cv2, np = _cv2_np()
-    templates: dict[int, object] = {}
-    font = cv2.FONT_HERSHEY_SIMPLEX
-    for digit in range(1, 10):
-        canvas = np.zeros((CLASSIFIER_SIZE, CLASSIFIER_SIZE), dtype=np.uint8)
-        text = str(digit)
-        text_size, _ = cv2.getTextSize(text, font, 0.9, 2)
-        x = (CLASSIFIER_SIZE - text_size[0]) // 2
-        y = (CLASSIFIER_SIZE + text_size[1]) // 2
-        cv2.putText(canvas, text, (x, y), font, 0.9, 255, 2, cv2.LINE_AA)
-        templates[digit] = canvas
-    return templates
 
 
 def _grid_consistency_warnings(cells: list[OcrCell]) -> list[str]:
