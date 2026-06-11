@@ -1,677 +1,31 @@
 "use client";
 
-import {
-  AlertTriangle,
-  Brain,
-  Check,
-  Crosshair,
-  Eraser,
-  Grid3X3,
-  History,
-  ImageUp,
-  Keyboard,
-  Lightbulb,
-  ListChecks,
-  Loader2,
-  Moon,
-  Pencil,
-  Plus,
-  RotateCcw,
-  Sparkles,
-  Sun,
-  Trash2,
-  Undo2
-} from "lucide-react";
-import { ChangeEvent, DragEvent, useEffect, useMemo, useRef, useState } from "react";
+import { Grid3X3, Pause, PartyPopper, Play, RotateCcw, Timer } from "lucide-react";
 
-import {
-  requestGeneratedPuzzle,
-  recognizeImage,
-  requestHint,
-  type GeneratedPuzzleResponse,
-  type HintResponse
-} from "../lib/api";
-import {
-  applyHintEliminationsToNotes,
-  applyOcrCells,
-  cellToIndex,
-  checkPuzzle,
-  collectMatchingDigitHighlights,
-  countFilledCells,
-  createBoardSnapshot,
-  createEmptyNotes,
-  createEmptyGrid,
-  createGivenMask,
-  findNextCellWithValue,
-  findNextInputIndex,
-  indexToCell,
-  moveSelection,
-  resolveNavigationKey,
-  parsePuzzleText,
-  quickFillNotes,
-  removeAllNotes,
-  resolveKeyboardInput,
-  restoreUndoSnapshot,
-  setCellValue,
-  setCellValueWithNotes,
-  toggleCellNote,
-  validateSudokuGrid,
-  pushUndoSnapshot,
-  type BoardSnapshot,
-  type CheckResult,
-  type GivenMask,
-  type NotesGrid,
-  type SudokuGrid,
-  type ValidationConflict
-} from "../lib/sudoku-state";
-
-const SAMPLE_PUZZLE =
-  "000694832" +
-  "004357196" +
-  "090002745" +
-  "070035004" +
-  "040008600" +
-  "031046000" +
-  "400000078" +
-  "000000420" +
-  "900400560";
-
-type TutorPhase = "loading" | "solving";
-type GeneratedLevel = "easy" | "medium" | "hard" | "expert" | "master";
-
-const GENERATED_LEVELS: Array<{ id: GeneratedLevel; label: string }> = [
-  { id: "easy", label: "Easy" },
-  { id: "medium", label: "Medium" },
-  { id: "hard", label: "Hard" },
-  { id: "expert", label: "Expert" },
-  { id: "master", label: "Master" }
-];
+import { HintPanel } from "../components/HintPanel";
+import { HistoryPanel } from "../components/HistoryPanel";
+import { Keypad } from "../components/Keypad";
+import { LoadingControls } from "../components/LoadingControls";
+import { ShortcutsPanel } from "../components/ShortcutsPanel";
+import { SolvingControls } from "../components/SolvingControls";
+import { StatusPanel } from "../components/StatusPanel";
+import { SudokuBoard } from "../components/SudokuBoard";
+import { TopBar } from "../components/TopBar";
+import { useImageImport } from "../hooks/useImageImport";
+import { useKeyboardShortcuts } from "../hooks/useKeyboardShortcuts";
+import { useSudokuGame } from "../hooks/useSudokuGame";
+import { useTheme } from "../hooks/useTheme";
+import { formatElapsedSeconds } from "../lib/time";
 
 export default function SudokuTutorPage() {
-  const [grid, setGrid] = useState<SudokuGrid>(() => createEmptyGrid());
-  const [notes, setNotes] = useState<NotesGrid>(() => createEmptyNotes());
-  const [givenMask, setGivenMask] = useState<GivenMask>(() => createGivenMask(createEmptyGrid()));
-  const [phase, setPhase] = useState<TutorPhase>("loading");
-  const [selectedIndex, setSelectedIndex] = useState(0);
-  const [currentHint, setCurrentHint] = useState<HintResponse | null>(null);
-  const [history, setHistory] = useState<HintResponse[]>([]);
-  const [undoStack, setUndoStack] = useState<BoardSnapshot[]>([]);
-  const [checkResult, setCheckResult] = useState<CheckResult | null>(null);
-  const [lowConfidence, setLowConfidence] = useState<number[]>([]);
-  const [messages, setMessages] = useState<string[]>([
-    "Enter a puzzle on the board or upload a clean Sudoku screenshot."
-  ]);
-  const [busyLabel, setBusyLabel] = useState<string | null>(null);
-  const [editingNotes, setEditingNotes] = useState(false);
-  const [quickFillMode, setQuickFillMode] = useState(false);
-  const [quickFillDigit, setQuickFillDigit] = useState<number | null>(null);
-  const [isDraggingImage, setIsDraggingImage] = useState(false);
-  const [theme, setTheme] = useState<"light" | "dark">("light");
-  const [puzzleText, setPuzzleText] = useState("");
-  const [generatedLevel, setGeneratedLevel] = useState<GeneratedLevel>("easy");
-  const fileInputRef = useRef<HTMLInputElement>(null);
-
-  const filledCount = countFilledCells(grid);
-  const digitCounts = useMemo(() => {
-    const counts = new Array(10).fill(0);
-    for (const value of grid) {
-      if (value) {
-        counts[value] += 1;
-      }
-    }
-    return counts;
-  }, [grid]);
-  const puzzleTextLength = useMemo(() => puzzleText.replace(/[^0-9.]/g, "").length, [puzzleText]);
-  const selectedCell = indexToCell(selectedIndex);
-  const isSolving = phase === "solving";
-  const selectedIsGiven = isSolving && givenMask[selectedIndex];
-  const selectedNotes = notes[selectedIndex] ?? [];
-  const activeHighlightDigit = quickFillDigit ?? grid[selectedIndex];
-  const validation = useMemo(() => validateSudokuGrid(grid), [grid]);
-  const statusMessages = validation.valid ? messages : ["Fix the highlighted conflicts before requesting a hint."];
-  const conflictIndexes = useMemo(() => collectConflictIndexes(validation.conflicts), [validation]);
-  const incorrectIndexes = useMemo(() => new Set(checkResult?.incorrectIndexes ?? []), [checkResult]);
-  const matchingHighlights = useMemo(() => {
-    const highlights = collectMatchingDigitHighlights(grid, notes, activeHighlightDigit);
-    return {
-      noteIndexes: new Set(highlights.noteIndexes),
-      valueIndexes: new Set(highlights.valueIndexes)
-    };
-  }, [activeHighlightDigit, grid, notes]);
-  const primaryIndexes = useMemo(() => collectHintCells(currentHint, "primary"), [currentHint]);
-  const relatedIndexes = useMemo(() => collectHintCells(currentHint, "related"), [currentHint]);
-  const eliminationIndexes = useMemo(() => collectHintCells(currentHint, "elimination"), [currentHint]);
-  const hintPreview = useMemo(() => collectHintPreview(currentHint, grid), [currentHint, grid]);
-  const canApplyCurrentHint =
-    !busyLabel &&
-    (Boolean(hintPreview) || Boolean(currentHint?.action.type === "eliminate" && currentHint.action.eliminations.length > 0));
-
-  useEffect(() => {
-    function handleWindowKeyDown(event: globalThis.KeyboardEvent) {
-      if (isEditableTarget(event.target)) {
-        return;
-      }
-
-      // Ctrl/Cmd+Z undoes the last board change.
-      if ((event.ctrlKey || event.metaKey) && !event.altKey && !event.shiftKey && event.key.toLowerCase() === "z") {
-        event.preventDefault();
-        handleUndo();
-        return;
-      }
-
-      if (event.altKey || event.ctrlKey || event.metaKey) {
-        return;
-      }
-
-      // Tab toggles pencil (notes) mode while solving.
-      if (event.key === "Tab") {
-        if (isSolving) {
-          event.preventDefault();
-          handleToggleEditingNotes();
-        }
-        return;
-      }
-
-      // Arrow keys and WASD move the cell selection.
-      const direction = resolveNavigationKey(event.key);
-      if (direction) {
-        event.preventDefault();
-        setSelectedIndex((index) => moveSelection(index, direction));
-        return;
-      }
-
-      // Enter places the active quick-fill digit in the selected cell.
-      if (event.key === "Enter") {
-        if (quickFillMode && quickFillDigit !== null && grid[selectedIndex] !== quickFillDigit) {
-          event.preventDefault();
-          placeQuickFillAt(selectedIndex);
-        }
-        return;
-      }
-
-      const value = resolveKeyboardInput(event.key);
-      if (value === "ignored") {
-        return;
-      }
-
-      event.preventDefault();
-      applyKeyboardValue(value);
-    }
-
-    window.addEventListener("keydown", handleWindowKeyDown);
-    return () => window.removeEventListener("keydown", handleWindowKeyDown);
-  }, [editingNotes, givenMask, grid, lowConfidence, notes, phase, quickFillDigit, quickFillMode, selectedIndex, undoStack]);
-
-  useEffect(() => {
-    function handleWindowPaste(event: globalThis.ClipboardEvent) {
-      if (phase !== "loading" || busyLabel) {
-        return;
-      }
-
-      const file = firstImageFile(event.clipboardData);
-      if (file) {
-        event.preventDefault();
-        void processImageFile(file);
-      }
-    }
-
-    window.addEventListener("paste", handleWindowPaste);
-    return () => window.removeEventListener("paste", handleWindowPaste);
-  }, [busyLabel, phase]);
-
-  useEffect(() => {
-    // The inline script in layout.tsx has already applied the theme to the
-    // document; mirror it into React state so the toggle reflects reality.
-    const applied = document.documentElement.dataset.theme;
-    setTheme(applied === "dark" ? "dark" : "light");
-  }, []);
-
-  function toggleTheme() {
-    setTheme((current) => {
-      const next = current === "dark" ? "light" : "dark";
-      document.documentElement.dataset.theme = next;
-      window.localStorage.setItem("sudoku-theme", next);
-      return next;
-    });
-  }
-
-  function recordUndoSnapshot() {
-    setUndoStack((items) => pushUndoSnapshot(items, createBoardSnapshot(grid, notes, selectedIndex, lowConfidence)));
-  }
-
-  function handleUndo() {
-    const restored = restoreUndoSnapshot(undoStack);
-    if (!restored.snapshot) {
-      return;
-    }
-
-    setGrid(restored.snapshot.grid);
-    setNotes(restored.snapshot.notes);
-    setSelectedIndex(restored.snapshot.selectedIndex);
-    setLowConfidence(restored.snapshot.lowConfidence);
-    setUndoStack(restored.stack);
-    setCurrentHint(null);
-    setCheckResult(null);
-    setMessages(["Undid the last board change."]);
-  }
-
-  function handleCheck() {
-    if (!isSolving) {
-      setMessages(["Start solving before checking the puzzle."]);
-      return;
-    }
-
-    const givens = grid.map((value, index) => (givenMask[index] ? value : null));
-    const result = checkPuzzle(givens, grid);
-    setCheckResult(result);
-    setMessages([checkResultMessage(result)]);
-  }
-
-  function hasBoardStateChanged(nextGrid: SudokuGrid, nextNotes: NotesGrid, nextLowConfidence = lowConfidence): boolean {
-    return !sameGrid(grid, nextGrid) || !sameNotes(notes, nextNotes) || !sameNumberList(lowConfidence, nextLowConfidence);
-  }
-
-  function updateGrid(nextGrid: SudokuGrid, nextNotes = notes) {
-    setGrid(nextGrid);
-    setNotes(nextNotes);
-    setCurrentHint(null);
-    setCheckResult(null);
-  }
-
-  function handleDigit(value: number | null) {
-    if (quickFillMode) {
-      if (value === null) {
-        setQuickFillDigit(null);
-        setMessages(["Quick fill digit cleared."]);
-        return;
-      }
-
-      // Re-pressing the active digit fills the selected cell when it does not
-      // already hold that number; the first press only locks the digit.
-      if (value === quickFillDigit && grid[selectedIndex] !== value) {
-        placeQuickFillAt(selectedIndex);
-        return;
-      }
-
-      setQuickFillDigit(value);
-      const matchingCell = findNextCellWithValue(grid, value, selectedIndex);
-      if (matchingCell !== null) {
-        setSelectedIndex(matchingCell);
-      }
-      setMessages([
-        editingNotes
-          ? `Quick fill locked to ${value}. Press ${value} or Enter on an empty cell to add that note.`
-          : `Quick fill locked to ${value}. Press ${value} or Enter on a cell to fill it.`
-      ]);
-      return;
-    }
-
-    if (editingNotes && value !== null) {
-      handleToggleNote(value);
-      return;
-    }
-
-    if (editingNotes && value === null) {
-      clearSelectedNotes();
-      return;
-    }
-
-    applyCellValue(value, true);
-  }
-
-  function handleCellClick(index: number) {
-    setSelectedIndex(index);
-    if (!quickFillMode || quickFillDigit === null) {
-      return;
-    }
-
-    placeQuickFillAt(index);
-  }
-
-  function placeQuickFillAt(index: number) {
-    if (quickFillDigit === null) {
-      return;
-    }
-
-    if (editingNotes) {
-      if (grid[index] !== null) {
-        setMessages(["Notes can only be edited on empty cells."]);
-        return;
-      }
-
-      const nextNotes = toggleCellNote(notes, grid, index, quickFillDigit);
-      if (hasBoardStateChanged(grid, nextNotes)) {
-        recordUndoSnapshot();
-      }
-      setNotes(nextNotes);
-      setCurrentHint(null);
-      return;
-    }
-
-    applyCellValueAt(index, quickFillDigit, false);
-  }
-
-  function handleToggleNote(digit: number) {
-    if (!isSolving) {
-      setMessages(["Start solving before editing notes."]);
-      return;
-    }
-    if (grid[selectedIndex] !== null) {
-      setMessages(["Notes can only be edited on empty cells."]);
-      return;
-    }
-
-    const nextNotes = toggleCellNote(notes, grid, selectedIndex, digit);
-    if (hasBoardStateChanged(grid, nextNotes)) {
-      recordUndoSnapshot();
-    }
-    setNotes(nextNotes);
-    setCurrentHint(null);
-  }
-
-  function clearSelectedNotes() {
-    if (!isSolving) {
-      return;
-    }
-
-    const nextNotes = notes.map((cellNotes, index) => (index === selectedIndex ? [] : cellNotes));
-    if (hasBoardStateChanged(grid, nextNotes)) {
-      recordUndoSnapshot();
-    }
-    setNotes(nextNotes);
-    setCurrentHint(null);
-  }
-
-  function applyCellValue(value: number | null, shouldAdvance: boolean) {
-    applyCellValueAt(selectedIndex, value, shouldAdvance);
-  }
-
-  function applyCellValueAt(index: number, value: number | null, shouldAdvance: boolean) {
-    if (!canEditCellValue(index)) {
-      setMessages(["Loaded cells are locked during solving."]);
-      return;
-    }
-
-    const result = isSolving
-      ? setCellValueWithNotes(grid, notes, index, value)
-      : { grid: setCellValue(grid, index, value), notes };
-    const nextLowConfidence = lowConfidence.filter((lowConfidenceIndex) => lowConfidenceIndex !== index);
-    if (isSolving && hasBoardStateChanged(result.grid, result.notes, nextLowConfidence)) {
-      recordUndoSnapshot();
-    }
-    updateGrid(result.grid, result.notes);
-    setLowConfidence(nextLowConfidence);
-    if (shouldAdvance && value !== null) {
-      setSelectedIndex(findNextInputIndex(result.grid, index));
-    }
-  }
-
-  function handleApplyHint() {
-    if (!currentHint) {
-      return;
-    }
-
-    if (hintPreview) {
-      const cell = indexToCell(hintPreview.index);
-      const result = setCellValueWithNotes(grid, notes, hintPreview.index, hintPreview.digit);
-      const nextLowConfidence = lowConfidence.filter((index) => index !== hintPreview.index);
-      if (hasBoardStateChanged(result.grid, result.notes, nextLowConfidence)) {
-        recordUndoSnapshot();
-      }
-      updateGrid(result.grid, result.notes);
-      setSelectedIndex(hintPreview.index);
-      setLowConfidence(nextLowConfidence);
-      setMessages([`Applied ${hintPreview.digit} at R${cell.row}C${cell.col}. Request another hint when you are ready.`]);
-      return;
-    }
-
-    if (currentHint.action.type === "eliminate" && currentHint.action.eliminations.length > 0) {
-      const nextNotes = applyHintEliminationsToNotes(grid, notes, currentHint.action.eliminations);
-      const firstCell = currentHint.action.eliminations[0].cell;
-      if (hasBoardStateChanged(grid, nextNotes)) {
-        recordUndoSnapshot();
-      }
-      updateGrid(grid, nextNotes);
-      setSelectedIndex(cellToIndex(firstCell));
-      setMessages([
-        `Applied ${currentHint.action.eliminations.length} candidate elimination${currentHint.action.eliminations.length === 1 ? "" : "s"}. Request another hint when you are ready.`
-      ]);
-    }
-  }
-
-  function applyKeyboardValue(value: number | null) {
-    handleDigit(value);
-  }
-
-  async function handleHint() {
-    if (!isSolving) {
-      setMessages(["Start solving before requesting a hint."]);
-      return;
-    }
-
-    setBusyLabel("Finding hint");
-    try {
-      const hint = await requestHint(grid, notes);
-      setCurrentHint(hint);
-      setHistory((items) => [hint, ...items].slice(0, 8));
-      setMessages(["Hint found. Review the conclusion, then expand through the evidence."]);
-    } catch (error) {
-      setMessages([error instanceof Error ? error.message : "Hint generation failed."]);
-    } finally {
-      setBusyLabel(null);
-    }
-  }
-
-  function handleStartSolving() {
-    if (filledCount === 0 || !validation.valid) {
-      return;
-    }
-
-    setPhase("solving");
-    setGivenMask(createGivenMask(grid));
-    setNotes(createEmptyNotes());
-    setEditingNotes(false);
-    setQuickFillMode(true);
-    setQuickFillDigit(null);
-    setCurrentHint(null);
-    setUndoStack([]);
-    setCheckResult(null);
-    setMessages([
-      "Solving phase started. Quick fill is on: pick a digit, then press it or Enter on a cell to place it. Loaded cells are locked."
-    ]);
-  }
-
-  function handleQuickFillMode() {
-    if (!isSolving) {
-      setMessages(["Start solving before using quick fill mode."]);
-      return;
-    }
-
-    const nextQuickFillMode = !quickFillMode;
-    setQuickFillMode(nextQuickFillMode);
-    if (!nextQuickFillMode) {
-      setQuickFillDigit(null);
-    }
-    setMessages([
-      nextQuickFillMode
-        ? editingNotes
-          ? "Quick fill enabled for notes. Select a digit, then click empty cells to add or remove that note."
-          : "Quick fill enabled. Select a digit, then click editable cells to fill it."
-        : "Quick fill mode disabled."
-    ]);
-  }
-
-  function handleToggleEditingNotes() {
-    if (!isSolving) {
-      return;
-    }
-
-    const nextEditingNotes = !editingNotes;
-    setEditingNotes(nextEditingNotes);
-    setMessages([
-      nextEditingNotes && quickFillMode
-        ? "Notes and quick fill are both on. Click empty cells to add or remove the locked note."
-        : nextEditingNotes
-          ? "Notes enabled. Select an empty cell, then choose digits to add or remove notes."
-          : quickFillMode
-            ? "Notes disabled. Quick fill will place values in editable cells."
-            : "Notes disabled."
-    ]);
-  }
-
-  function handleQuickFillNotes() {
-    if (!isSolving) {
-      setMessages(["Start solving before filling notes."]);
-      return;
-    }
-
-    const nextNotes = quickFillNotes(grid);
-    if (hasBoardStateChanged(grid, nextNotes)) {
-      recordUndoSnapshot();
-    }
-    setNotes(nextNotes);
-    setCurrentHint(null);
-    setMessages(["Filled notes for all empty cells from the current board."]);
-  }
-
-  function handleRemoveAllNotes() {
-    const nextNotes = removeAllNotes(notes);
-    if (hasBoardStateChanged(grid, nextNotes)) {
-      recordUndoSnapshot();
-    }
-    setNotes(nextNotes);
-    setCurrentHint(null);
-    setMessages(["Removed all notes."]);
-  }
-
-  function handleLoadPuzzleText() {
-    try {
-      const nextGrid = parsePuzzleText(puzzleText);
-      const nextValidation = validateSudokuGrid(nextGrid);
-      if (!nextValidation.valid) {
-        setMessages(["Pasted puzzle has conflicts. Fix the 81-character string before loading it."]);
-        return;
-      }
-
-      loadPuzzle(nextGrid, ["Loaded 81 characters. Review the board, then confirm to lock the givens."]);
-      setLowConfidence([]);
-    } catch (error) {
-      setMessages([error instanceof Error ? error.message : "Puzzle text could not be loaded."]);
-    }
-  }
-
-  async function handleGeneratePuzzle() {
-    setBusyLabel("Generating puzzle");
-    try {
-      const generated = await requestGeneratedPuzzle(generatedLevel);
-      const nextGrid = parsePuzzleText(generated.puzzle);
-      loadPuzzle(nextGrid, [generatedPuzzleMessage(generated)]);
-      setPuzzleText(generated.puzzle);
-      setLowConfidence([]);
-    } catch (error) {
-      setMessages([error instanceof Error ? error.message : "Puzzle generation failed."]);
-    } finally {
-      setBusyLabel(null);
-    }
-  }
-
-  function loadPuzzle(nextGrid: SudokuGrid, nextMessages: string[]) {
-    setGrid(nextGrid);
-    setNotes(createEmptyNotes());
-    setGivenMask(createGivenMask(createEmptyGrid()));
-    setPhase("loading");
-    setEditingNotes(false);
-    setQuickFillMode(false);
-    setQuickFillDigit(null);
-    setCurrentHint(null);
-    setHistory([]);
-    setUndoStack([]);
-    setCheckResult(null);
-    setMessages(nextMessages);
-  }
-
-  function canEditCellValue(index: number): boolean {
-    return phase === "loading" || !givenMask[index];
-  }
-
-  async function processImageFile(file: File) {
-    setBusyLabel("Reading image");
-    try {
-      const result = await recognizeImage(file);
-      const applied = applyOcrCells(createEmptyGrid(), result.cells);
-      loadPuzzle(applied.grid, result.warnings);
-      setLowConfidence(applied.lowConfidence);
-    } catch (error) {
-      setMessages([error instanceof Error ? error.message : "Image recognition failed."]);
-    } finally {
-      setBusyLabel(null);
-    }
-  }
-
-  async function handleUpload(event: ChangeEvent<HTMLInputElement>) {
-    const file = event.target.files?.[0];
-    if (file) {
-      await processImageFile(file);
-    }
-    event.target.value = "";
-  }
-
-  function handleImageDragOver(event: DragEvent<HTMLDivElement>) {
-    if (phase !== "loading" || busyLabel || !Array.from(event.dataTransfer.types).includes("Files")) {
-      return;
-    }
-    event.preventDefault();
-    setIsDraggingImage(true);
-  }
-
-  function handleImageDragLeave(event: DragEvent<HTMLDivElement>) {
-    if (event.currentTarget.contains(event.relatedTarget as Node | null)) {
-      return;
-    }
-    setIsDraggingImage(false);
-  }
-
-  function handleImageDrop(event: DragEvent<HTMLDivElement>) {
-    if (phase !== "loading") {
-      return;
-    }
-    event.preventDefault();
-    setIsDraggingImage(false);
-    const file = firstImageFile(event.dataTransfer);
-    if (file) {
-      void processImageFile(file);
-    } else {
-      setMessages(["Drop a PNG or JPG screenshot of a Sudoku grid."]);
-    }
-  }
-
-  function loadSample() {
-    loadPuzzle(parsePuzzleText(SAMPLE_PUZZLE), ["Loaded a sample puzzle. Review it, then start solving to lock the givens."]);
-    setLowConfidence([]);
-  }
-
-  function resetPuzzle() {
-    loadPuzzle(createEmptyGrid(), ["Workspace cleared. Start with board entry or image upload."]);
-    setLowConfidence([]);
-  }
+  const game = useSudokuGame();
+  const { theme, toggleTheme } = useTheme();
+  const imageImport = useImageImport(game);
+  useKeyboardShortcuts(game);
 
   return (
     <main className="workspace">
-      <section className="topbar" aria-label="Sudoku tutor header">
-        <div>
-          <p className="eyebrow">Puzzle Hint</p>
-          <h1>Sudoku strategy desk</h1>
-        </div>
-        <button
-          type="button"
-          className="theme-toggle"
-          onClick={toggleTheme}
-          aria-label={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
-        >
-          {theme === "dark" ? <Sun size={17} /> : <Moon size={17} />}
-          {theme === "dark" ? "Light" : "Dark"}
-        </button>
-      </section>
+      <TopBar theme={theme} onToggleTheme={toggleTheme} />
 
       <section className="content-grid">
         <section className="board-zone" aria-label="Sudoku board">
@@ -679,93 +33,85 @@ export default function SudokuTutorPage() {
             <div>
               <p className="eyebrow">Board</p>
               <h2>
-                R{selectedCell.row}C{selectedCell.col}
+                R{game.selectedCell.row}C{game.selectedCell.col}
               </h2>
             </div>
-            <div className="meter" aria-label={`${filledCount} filled cells`}>
-              <span style={{ width: `${(filledCount / 81) * 100}%` }} />
+            <div className="board-tools">
+              {game.isSolving ? (
+                <>
+                  <span className="timer-chip" role="timer" aria-label={`Elapsed time ${formatElapsedSeconds(game.elapsedSeconds)}`}>
+                    <Timer size={15} />
+                    {formatElapsedSeconds(game.elapsedSeconds)}
+                  </span>
+                  <button
+                    type="button"
+                    className="pause-button"
+                    onClick={game.togglePause}
+                    disabled={game.isSolved}
+                    aria-label={game.paused ? "Resume the solve clock" : "Pause the solve clock"}
+                  >
+                    {game.paused ? <Play size={15} /> : <Pause size={15} />}
+                  </button>
+                </>
+              ) : null}
+              <div className="meter" aria-label={`${game.filledCount} filled cells`}>
+                <span style={{ width: `${(game.filledCount / 81) * 100}%` }} />
+              </div>
             </div>
           </div>
 
-          <div className="sudoku-board" role="grid" aria-label="Sudoku grid">
-            {grid.map((value, index) => {
-              const row = Math.floor(index / 9);
-              const col = index % 9;
-              const noteValues = notes[index] ?? [];
-              const isGiven = isSolving && givenMask[index];
-              const shouldShowHintPreview = hintPreview?.index === index;
-              const classes = [
-                "sudoku-cell",
-                selectedIndex === index ? "selected" : "",
-                isGiven ? "locked-given" : "",
-                editingNotes && selectedIndex === index ? "note-target" : "",
-                matchingHighlights.valueIndexes.has(index) ? "same-digit-cell" : "",
-                matchingHighlights.noteIndexes.has(index) ? "same-digit-note-cell" : "",
-                conflictIndexes.has(index) ? "conflict" : "",
-                incorrectIndexes.has(index) ? "check-wrong" : "",
-                lowConfidence.includes(index) ? "low-confidence" : "",
-                primaryIndexes.has(index) ? "hint-primary" : "",
-                relatedIndexes.has(index) ? "hint-related" : "",
-                eliminationIndexes.has(index) ? "hint-elimination" : "",
-                shouldShowHintPreview ? "hint-preview" : ""
-              ]
-                .filter(Boolean)
-                .join(" ");
-              const ariaDetails = [
-                value ? `${value}${isGiven ? ", loaded clue" : ""}` : "",
-                !value && shouldShowHintPreview ? `suggested ${hintPreview.digit}` : "",
-                !value && noteValues.length ? `notes ${noteValues.join(" ")}` : ""
-              ].filter(Boolean);
-              const ariaValue = ariaDetails.length ? `, ${ariaDetails.join(", ")}` : "";
-
-              return (
-                <button
-                  className={classes}
-                  key={index}
-                  type="button"
-                  role="gridcell"
-                  aria-label={`Row ${row + 1}, column ${col + 1}${ariaValue}`}
-                  onClick={() => handleCellClick(index)}
-                >
-                  {value ? (
-                    <strong>{value}</strong>
-                  ) : (
-                    <>
-                      {shouldShowHintPreview ? (
-                        <span className="hint-preview-value" aria-hidden="true">
-                          {hintPreview.digit}
-                        </span>
-                      ) : null}
-                      {noteValues.length ? <NoteMarks activeDigit={activeHighlightDigit} values={noteValues} /> : null}
-                    </>
-                  )}
+          <div className="board-wrap">
+            <SudokuBoard
+              grid={game.grid}
+              notes={game.notes}
+              givenMask={game.givenMask}
+              isSolving={game.isSolving}
+              selectedIndex={game.selectedIndex}
+              editingNotes={game.editingNotes}
+              activeHighlightDigit={game.activeHighlightDigit}
+              lowConfidence={game.lowConfidence}
+              hintPreview={game.hintPreview}
+              highlights={{
+                conflictIndexes: game.conflictIndexes,
+                incorrectIndexes: game.incorrectIndexes,
+                primaryIndexes: game.primaryIndexes,
+                relatedIndexes: game.relatedIndexes,
+                eliminationIndexes: game.eliminationIndexes,
+                matchingValueIndexes: game.matchingHighlights.valueIndexes,
+                matchingNoteIndexes: game.matchingHighlights.noteIndexes,
+                peerIndexes: game.peerHighlightIndexes
+              }}
+              paused={game.paused}
+              onCellClick={game.clickCell}
+            />
+            {game.paused ? (
+              <div className="board-overlay" role="status">
+                <p>Paused</p>
+                <button type="button" onClick={game.togglePause}>
+                  <Play size={17} />
+                  Resume
                 </button>
-              );
-            })}
+              </div>
+            ) : null}
+            {game.isSolved ? (
+              <div className="solve-banner" role="status">
+                <PartyPopper size={18} />
+                Solved in {formatElapsedSeconds(game.elapsedSeconds)}
+              </div>
+            ) : null}
           </div>
 
-          <div className="keypad" aria-label="Digit entry">
-            {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((digit) => (
-              <button
-                className={[
-                  editingNotes && selectedNotes.includes(digit) ? "note-active" : "",
-                  quickFillDigit === digit ? "quick-fill-active" : "",
-                  digitCounts[digit] >= 9 ? "digit-complete" : ""
-                ]
-                  .filter(Boolean)
-                  .join(" ")}
-                disabled={quickFillMode ? !isSolving : editingNotes ? !isSolving || grid[selectedIndex] !== null : selectedIsGiven}
-                key={digit}
-                type="button"
-                onClick={() => handleDigit(digit)}
-              >
-                {digit}
-              </button>
-            ))}
-            <button type="button" onClick={() => handleDigit(null)} disabled={quickFillMode ? !isSolving : editingNotes ? !isSolving : selectedIsGiven}>
-              <Eraser size={16} />
-            </button>
-          </div>
+          <Keypad
+            digitCounts={game.digitCounts}
+            selectedNotes={game.selectedNotes}
+            quickFillDigit={game.quickFillDigit}
+            quickFillMode={game.quickFillMode}
+            editingNotes={game.editingNotes}
+            isSolving={game.isSolving}
+            selectedIsGiven={game.selectedIsGiven}
+            selectedCellFilled={game.grid[game.selectedIndex] !== null}
+            onDigit={game.pressDigit}
+          />
         </section>
 
         <aside className="inspector" aria-label="Hint explanation">
@@ -775,417 +121,68 @@ export default function SudokuTutorPage() {
                 <Grid3X3 size={19} />
                 <h2>Controls</h2>
               </div>
-              <button className="reset-icon-button" type="button" onClick={resetPuzzle} aria-label="Reset puzzle">
+              <button className="reset-icon-button" type="button" onClick={game.reset} aria-label="Reset puzzle">
                 <RotateCcw size={17} />
               </button>
             </div>
             <div className="action-grid">
-              {phase === "loading" ? (
-                <div
-                  className={isDraggingImage ? "loading-stack dragging" : "loading-stack"}
-                  onDragOver={handleImageDragOver}
-                  onDragLeave={handleImageDragLeave}
-                  onDrop={handleImageDrop}
-                >
-                  <div className="puzzle-generator">
-                    <label htmlFor="generated-level">Generate puzzle</label>
-                    <div className="generator-row">
-                      <select
-                        id="generated-level"
-                        className="level-select"
-                        value={generatedLevel}
-                        onChange={(event) => setGeneratedLevel(event.target.value as GeneratedLevel)}
-                      >
-                        {GENERATED_LEVELS.map((level) => (
-                          <option key={level.id} value={level.id}>
-                            {level.label}
-                          </option>
-                        ))}
-                      </select>
-                      <button type="button" onClick={handleGeneratePuzzle} disabled={busyLabel === "Generating puzzle"}>
-                        {busyLabel === "Generating puzzle" ? <Loader2 className="spin" size={17} /> : <Sparkles size={17} />}
-                        Generate
-                      </button>
-                    </div>
-                  </div>
-                  <div className="puzzle-loader">
-                    <label htmlFor="puzzle-text">81-character puzzle</label>
-                    <textarea
-                      id="puzzle-text"
-                      value={puzzleText}
-                      onChange={(event) => setPuzzleText(event.target.value)}
-                      placeholder="530070000600195000..."
-                      rows={4}
-                      aria-describedby="puzzle-text-help puzzle-text-count"
-                    />
-                    <div className="puzzle-loader-footer">
-                      <p id="puzzle-text-help">Fill left to right, top to bottom. Use 0 for empty cells.</p>
-                      <span id="puzzle-text-count" aria-label={`${puzzleTextLength} of 81 characters`}>
-                        {puzzleTextLength}/81
-                      </span>
-                    </div>
-                    <button type="button" onClick={handleLoadPuzzleText}>
-                      Load puzzle
-                    </button>
-                  </div>
-                  <div className="phase-buttons" aria-label="Loading controls">
-                    <button type="button" onClick={loadSample}>
-                      <Sparkles size={17} />
-                      Sample
-                    </button>
-                    <button type="button" onClick={() => fileInputRef.current?.click()}>
-                      <ImageUp size={17} />
-                      Upload
-                    </button>
-                    <button
-                      className="primary"
-                      type="button"
-                      onClick={handleStartSolving}
-                      disabled={filledCount === 0 || !validation.valid}
-                    >
-                      <Check size={17} />
-                      Confirm
-                    </button>
-                  </div>
-                  <p className="upload-hint">
-                    {isDraggingImage ? "Drop the screenshot to import it." : "Or drag & drop or paste (Ctrl+V) a screenshot here."}
-                  </p>
-                </div>
+              {game.phase === "loading" ? (
+                <LoadingControls
+                  puzzleText={game.puzzleText}
+                  puzzleTextLength={game.puzzleText.replace(/[^0-9.]/g, "").length}
+                  generatedLevel={game.generatedLevel}
+                  busyLabel={game.busyLabel}
+                  canConfirm={game.filledCount > 0 && game.validation.valid}
+                  isDraggingImage={imageImport.isDraggingImage}
+                  onPuzzleTextChange={game.setPuzzleText}
+                  onGeneratedLevelChange={game.setGeneratedLevel}
+                  onGeneratePuzzle={() => void game.generatePuzzle()}
+                  onLoadPuzzleText={game.loadPuzzleFromText}
+                  onLoadSample={game.loadSample}
+                  onUploadClick={imageImport.openFilePicker}
+                  onConfirm={game.startSolving}
+                  onDragOver={imageImport.handleDragOver}
+                  onDragLeave={imageImport.handleDragLeave}
+                  onDrop={imageImport.handleDrop}
+                />
               ) : (
-                <div className="control-stack" aria-label="Solving controls">
-                  <button
-                    type="button"
-                    className="undo-action"
-                    onClick={handleUndo}
-                    disabled={undoStack.length === 0 || Boolean(busyLabel)}
-                    aria-label="Undo last board change"
-                  >
-                    <Undo2 size={17} />
-                    Undo
-                  </button>
-                  <button
-                    type="button"
-                    className={editingNotes ? "switch-row active" : "switch-row"}
-                    onClick={handleToggleEditingNotes}
-                    role="switch"
-                    aria-checked={editingNotes}
-                    aria-label="Notes"
-                  >
-                    <span className="switch-copy">
-                      <Pencil size={17} />
-                      Notes
-                    </span>
-                    <span className="switch-track" aria-hidden="true">
-                      <span className="switch-thumb" />
-                    </span>
-                  </button>
-                  <button
-                    type="button"
-                    className={quickFillMode ? "switch-row active" : "switch-row"}
-                    onClick={handleQuickFillMode}
-                    role="switch"
-                    aria-checked={quickFillMode}
-                    aria-label="Quick fill"
-                  >
-                    <span className="switch-copy">
-                      <Crosshair size={17} />
-                      Quick fill
-                    </span>
-                    <span className="switch-track" aria-hidden="true">
-                      <span className="switch-thumb" />
-                    </span>
-                  </button>
-                  <div className="note-action-row">
-                    <button type="button" onClick={handleQuickFillNotes} disabled={!validation.valid}>
-                      <Plus size={17} />
-                      Fill all notes
-                    </button>
-                    <button type="button" onClick={handleRemoveAllNotes}>
-                      <Trash2 size={17} />
-                      Remove all notes
-                    </button>
-                  </div>
-                  <button
-                    type="button"
-                    className="check-action"
-                    onClick={handleCheck}
-                    disabled={Boolean(busyLabel) || !validation.valid}
-                    aria-label="Check the puzzle for wrong numbers"
-                  >
-                    <ListChecks size={17} />
-                    Check
-                  </button>
-                  <button
-                    className="primary hint-action"
-                    type="button"
-                    onClick={handleHint}
-                    disabled={Boolean(busyLabel) || filledCount === 0 || !validation.valid}
-                  >
-                    {busyLabel === "Finding hint" ? <Loader2 className="spin" size={17} /> : <Lightbulb size={17} />}
-                    Hint
-                  </button>
-                </div>
+                <SolvingControls
+                  busyLabel={game.busyLabel}
+                  canUndo={game.undoStack.length > 0}
+                  canRedo={game.redoStack.length > 0}
+                  editingNotes={game.editingNotes}
+                  quickFillMode={game.quickFillMode}
+                  isValid={game.validation.valid}
+                  filledCount={game.filledCount}
+                  onUndo={game.undo}
+                  onRedo={game.redo}
+                  onToggleNotes={game.toggleNotesMode}
+                  onToggleQuickFill={game.toggleQuickFillMode}
+                  onFillAllNotes={game.fillAllNotes}
+                  onRemoveAllNotes={game.clearAllNotes}
+                  onCheck={game.check}
+                  onHint={() => void game.hint()}
+                />
               )}
             </div>
-            <input ref={fileInputRef} className="hidden-input" type="file" accept="image/*" onChange={handleUpload} />
+            <input
+              ref={imageImport.fileInputRef}
+              className="hidden-input"
+              type="file"
+              accept="image/*"
+              onChange={(event) => void imageImport.handleUpload(event)}
+            />
           </div>
 
-          <div className="status-panel">
-            <div className="panel-title">
-              <Brain size={19} />
-              <h2>Strategy note</h2>
-            </div>
-            {busyLabel ? (
-              <p className="busy">
-                <Loader2 className="spin" size={18} />
-                {busyLabel}...
-              </p>
-            ) : null}
-            <MessageList messages={statusMessages} />
-          </div>
+          <StatusPanel busyLabel={game.busyLabel} messages={game.statusMessages} />
 
-          <HintPanel canApplyHint={canApplyCurrentHint} hint={currentHint} onApplyHint={handleApplyHint} />
+          <HintPanel canApplyHint={game.canApplyCurrentHint} hint={game.currentHint} onApplyHint={game.applyHint} />
 
-          <div className="history-panel">
-            <div className="panel-title">
-              <History size={18} />
-              <h2>Hint history</h2>
-            </div>
-            {history.length === 0 ? (
-              <p className="muted">Hints you request will appear here for review.</p>
-            ) : (
-              <ol>
-                {history.map((hint, index) => (
-                  <li key={`${hint.technique.id}-${index}`}>
-                    <span>{hint.technique.name}</span>
-                    <p>{hint.summary}</p>
-                  </li>
-                ))}
-              </ol>
-            )}
-          </div>
+          <HistoryPanel history={game.history} />
 
           <ShortcutsPanel />
         </aside>
       </section>
     </main>
   );
-}
-
-const KEYBOARD_SHORTCUTS: Array<{ keys: string[]; label: string }> = [
-  { keys: ["1", "–", "9"], label: "Enter a digit in the selected cell" },
-  { keys: ["Space"], label: "Clear the selected cell" },
-  { keys: ["↑", "↓", "←", "→"], label: "Move between cells (or W A S D)" },
-  { keys: ["Enter"], label: "Fill the selected cell with the quick-fill digit" },
-  { keys: ["Tab"], label: "Toggle pencil (notes) mode" },
-  { keys: ["Ctrl", "Z"], label: "Undo the last board change" }
-];
-
-function ShortcutsPanel() {
-  return (
-    <div className="shortcuts-panel">
-      <div className="panel-title">
-        <Keyboard size={18} />
-        <h2>Keyboard shortcuts</h2>
-      </div>
-      <dl className="shortcuts-list">
-        {KEYBOARD_SHORTCUTS.map((shortcut) => (
-          <div className="shortcut-row" key={shortcut.label}>
-            <dt>
-              {shortcut.keys.map((key, index) =>
-                key === "–" ? (
-                  <span className="shortcut-sep" key={`${shortcut.label}-sep-${index}`} aria-hidden="true">
-                    –
-                  </span>
-                ) : (
-                  <kbd key={`${shortcut.label}-${key}`}>{key}</kbd>
-                )
-              )}
-            </dt>
-            <dd>{shortcut.label}</dd>
-          </div>
-        ))}
-      </dl>
-    </div>
-  );
-}
-
-function NoteMarks({ activeDigit, values }: { activeDigit: number | null; values: number[] }) {
-  return (
-    <span className="notes" aria-hidden="true">
-      {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((digit) => (
-        <span className={values.includes(digit) && digit === activeDigit ? "same-digit-note" : ""} key={digit}>
-          {values.includes(digit) ? digit : ""}
-        </span>
-      ))}
-    </span>
-  );
-}
-
-function MessageList({ messages }: { messages: string[] }) {
-  return (
-    <div className="messages">
-      {messages.map((message, index) => (
-        <p key={`${message}-${index}`}>
-          {message.toLowerCase().includes("conflict") || message.toLowerCase().includes("failed") ? <AlertTriangle size={16} /> : <Grid3X3 size={16} />}
-          {message}
-        </p>
-      ))}
-    </div>
-  );
-}
-
-function HintPanel({
-  canApplyHint,
-  hint,
-  onApplyHint
-}: {
-  canApplyHint: boolean;
-  hint: HintResponse | null;
-  onApplyHint: () => void;
-}) {
-  if (!hint) {
-    return (
-      <div className="hint-panel empty">
-        <div className="panel-title">
-          <Lightbulb size={18} />
-          <h2>Next hint</h2>
-        </div>
-        <p>Enter a valid puzzle and request a hint to see the next logical move.</p>
-      </div>
-    );
-  }
-
-  return (
-    <div className="hint-panel">
-      <div className="hint-panel-header">
-        <div className="panel-title">
-          <Lightbulb size={18} />
-          <h2>Next hint</h2>
-        </div>
-        <button type="button" onClick={onApplyHint} disabled={!canApplyHint}>
-          <Check size={17} />
-          Apply
-        </button>
-      </div>
-      <div className="technique-row">
-        <span>{hint.technique.name}</span>
-        <small>Rank {hint.technique.rank}</small>
-      </div>
-      <h2>{hint.summary}</h2>
-      <div className="explanation-stack">
-        {hint.explanation.map((step, index) => (
-          <p key={`${step}-${index}`}>
-            <span>{index + 1}</span>
-            {step}
-          </p>
-        ))}
-      </div>
-      {hint.action.eliminations.length > 0 ? (
-        <div className="elimination-list">
-          <strong>Eliminations</strong>
-          <p>
-            {hint.action.eliminations
-              .slice(0, 6)
-              .map((item) => `R${item.cell.row}C${item.cell.col} - ${item.digit}`)
-              .join(", ")}
-          </p>
-        </div>
-      ) : null}
-    </div>
-  );
-}
-
-function checkResultMessage(result: CheckResult): string {
-  if (result.status === "solved") {
-    return "Solved! Every cell matches the solution.";
-  }
-  if (result.status === "incorrect") {
-    const count = result.incorrectIndexes.length;
-    return `Found ${count} wrong number${count === 1 ? "" : "s"}. Highlighted cells do not match the solution.`;
-  }
-  if (result.status === "unsolvable") {
-    return "The locked givens have no valid solution, so the board cannot be checked.";
-  }
-  return "No mistakes so far. Some cells are still empty—keep going.";
-}
-
-function collectConflictIndexes(conflicts: ValidationConflict[]): Set<number> {
-  return new Set(conflicts.flatMap((conflict) => conflict.cells.map(cellToIndex)));
-}
-
-function sameGrid(left: SudokuGrid, right: SudokuGrid): boolean {
-  return left.length === right.length && left.every((value, index) => value === right[index]);
-}
-
-function sameNotes(left: NotesGrid, right: NotesGrid): boolean {
-  return left.length === right.length && left.every((values, index) => sameNumberList(values, right[index] ?? []));
-}
-
-function sameNumberList(left: number[], right: number[]): boolean {
-  return left.length === right.length && left.every((value, index) => value === right[index]);
-}
-
-function collectHintCells(hint: HintResponse | null, kind: "primary" | "related" | "elimination"): Set<number> {
-  if (!hint) {
-    return new Set();
-  }
-  if (kind === "primary") {
-    return new Set(hint.highlights.primary_cells.map(cellToIndex));
-  }
-  if (kind === "related") {
-    return new Set(hint.highlights.related_cells.map(cellToIndex));
-  }
-  return new Set(hint.highlights.eliminations.map((item) => cellToIndex(item.cell)));
-}
-
-function collectHintPreview(hint: HintResponse | null, grid: SudokuGrid): { index: number; digit: number } | null {
-  if (hint?.action.type !== "place" || !hint.action.cell || !hint.action.digit) {
-    return null;
-  }
-
-  const index = cellToIndex(hint.action.cell);
-  if (index < 0 || index > 80 || grid[index] !== null) {
-    return null;
-  }
-
-  return { index, digit: hint.action.digit };
-}
-
-function generatedPuzzleMessage(generated: GeneratedPuzzleResponse): string {
-  const requested = generated.requested_level.name;
-  const rated = generated.level.name;
-  const seRating = generated.se_rating ? `, SE ${generated.se_rating.toFixed(1)}` : "";
-  return `Generated ${requested} puzzle. Rated ${rated}${seRating} by ${generated.attribution.name}. Review it, then confirm to lock the givens.`;
-}
-
-function firstImageFile(data: DataTransfer | null): File | null {
-  if (!data) {
-    return null;
-  }
-
-  for (const file of Array.from(data.files)) {
-    if (file.type.startsWith("image/")) {
-      return file;
-    }
-  }
-
-  for (const item of Array.from(data.items)) {
-    if (item.kind === "file" && item.type.startsWith("image/")) {
-      const file = item.getAsFile();
-      if (file) {
-        return file;
-      }
-    }
-  }
-
-  return null;
-}
-
-function isEditableTarget(target: EventTarget | null): boolean {
-  if (!(target instanceof HTMLElement)) {
-    return false;
-  }
-  const tagName = target.tagName.toLowerCase();
-  return tagName === "input" || tagName === "textarea" || target.isContentEditable;
 }

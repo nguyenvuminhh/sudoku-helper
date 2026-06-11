@@ -54,7 +54,14 @@ python3 -m uvicorn backend.app.main:app --host 127.0.0.1 --port 8001
 - Keep Sudoku rules and solver behavior in `backend/app/sudoku`.
 - Keep FastAPI route wiring in `backend/app/main.py`.
 - Keep frontend Sudoku state helpers in `frontend/src/lib/sudoku-state.ts`.
-- Keep the main tutor workspace in `frontend/src/app/page.tsx`.
+- Keep the main tutor workspace in `frontend/src/app/page.tsx`; it composes
+  hooks from `frontend/src/hooks` (game state in `useSudokuGame.ts`) and
+  presentational components from `frontend/src/components`.
+- Keep pure hint/check helpers in `frontend/src/lib/hints.ts` and shared
+  constants in `frontend/src/lib/constants.ts`.
+- Frontend tests are behavior tests (`vitest` + Testing Library, jsdom) in
+  `frontend/src/app/page.test.tsx` plus unit tests beside each lib module. Do
+  not add tests that string-match component source code.
 - Add tests before changing behavior.
 - Do not depend on external AI services for image import unless the product direction changes.
 - Image import should use OpenCV grid extraction before digit classification.

@@ -9,6 +9,9 @@ Sudoku-first puzzle hint website with a FastAPI backend and a static Next.js fro
 - Correction-first validation for invalid grids and low-confidence OCR cells.
 - Step-by-step hints with technique name, conclusion, layered explanation, highlights, and history.
 - Level-based puzzle generation backed by the Ukodus `sudoku-core` engine.
+- Row/column/box peer highlighting around the selected cell.
+- Solve clock with pause (board hidden while paused) and automatic solved detection with elapsed time.
+- Undo and redo (`Ctrl+Z` / `Ctrl+Y`), and the in-progress game survives page reloads via local storage.
 - FastAPI API routes under `/api/sudoku/*`.
 - Next.js static export that can be served by FastAPI or deployed separately.
 

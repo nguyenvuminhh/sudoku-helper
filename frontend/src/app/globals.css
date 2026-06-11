@@ -30,6 +30,7 @@
   --cell-given-bg: #eef1ec;
   --cell-given-text: #0f1720;
   --note-text: #2e3b43;
+  --peer-bg: #eaf3f1;
 
   --select-bg: #d6f0ec;
   --select-ring: var(--teal);
@@ -78,6 +79,7 @@
   --cell-given-bg: #141b21;
   --cell-given-text: #aab6c0;
   --note-text: #aeb9c2;
+  --peer-bg: #232f39;
 
   --select-bg: #14403b;
   --select-ring: #38ccc2;
@@ -317,10 +319,22 @@ h2 {
 }
 
 .sudoku-cell strong {
+  animation: cell-pop 160ms ease;
   color: var(--cell-text);
   font-family: "Iowan Old Style", Georgia, serif;
   font-size: 2rem;
   line-height: 1;
+}
+
+@keyframes cell-pop {
+  from {
+    opacity: 0.35;
+    transform: scale(0.7);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
 }
 
 .sudoku-cell > strong,
@@ -335,6 +349,12 @@ h2 {
 
 .sudoku-cell.locked-given strong {
   color: var(--cell-given-text);
+}
+
+/* Soft tint on the selected cell's row, column, and box. Declared before the
+   stronger highlight rules so any of them win over the peer tint. */
+.sudoku-cell.peer-cell {
+  background: var(--peer-bg);
 }
 
 .sudoku-cell.selected {
@@ -744,6 +764,7 @@ h2 {
 }
 
 .undo-action,
+.redo-action,
 .check-action {
   justify-content: center;
 }
@@ -988,6 +1009,117 @@ kbd {
 @keyframes spin {
   to {
     transform: rotate(360deg);
+  }
+}
+
+/* Board chrome: solve clock, pause control, and overlays. */
+.board-tools {
+  align-items: center;
+  display: flex;
+  flex: 1;
+  gap: 10px;
+  justify-content: flex-end;
+  min-width: 0;
+}
+
+.timer-chip {
+  align-items: center;
+  background: var(--mint);
+  border: 1px solid var(--teal);
+  border-radius: 999px;
+  color: var(--teal-deep);
+  display: inline-flex;
+  font-size: 0.85rem;
+  font-variant-numeric: tabular-nums;
+  font-weight: 800;
+  gap: 6px;
+  padding: 5px 12px;
+}
+
+.pause-button {
+  flex: 0 0 auto;
+  height: 32px;
+  justify-content: center;
+  min-height: 32px;
+  padding: 0;
+  width: 32px;
+}
+
+.board-wrap {
+  margin-inline: auto;
+  max-width: min(680px, max(300px, calc(100vh - 300px)));
+  max-width: min(680px, max(300px, calc(100svh - 300px)));
+  position: relative;
+  width: 100%;
+}
+
+.sudoku-board.paused .sudoku-cell strong,
+.sudoku-board.paused .sudoku-cell .notes,
+.sudoku-board.paused .sudoku-cell .hint-preview-value {
+  visibility: hidden;
+}
+
+.board-overlay {
+  align-content: center;
+  background: var(--panel-bg);
+  display: grid;
+  gap: 14px;
+  inset: 0;
+  justify-items: center;
+  position: absolute;
+  z-index: 2;
+}
+
+.board-overlay p {
+  font-family: "Iowan Old Style", Georgia, serif;
+  font-size: 1.6rem;
+  font-weight: 700;
+}
+
+.solve-banner {
+  align-items: center;
+  animation: banner-pop 260ms ease;
+  background: linear-gradient(90deg, var(--teal), var(--teal-deep));
+  border-radius: 10px;
+  box-shadow: var(--shadow);
+  color: #ffffff;
+  display: flex;
+  font-size: 1.15rem;
+  font-weight: 800;
+  gap: 10px;
+  justify-content: center;
+  left: 8%;
+  padding: 14px 18px;
+  pointer-events: none;
+  position: absolute;
+  right: 8%;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 2;
+}
+
+@keyframes banner-pop {
+  from {
+    opacity: 0;
+    transform: translateY(-50%) scale(0.92);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(-50%) scale(1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sudoku-cell strong,
+  .solve-banner {
+    animation: none;
+  }
+
+  button,
+  .switch-thumb,
+  .switch-track,
+  .loading-stack {
+    transition: none;
   }
 }
 
