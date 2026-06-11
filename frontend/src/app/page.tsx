@@ -40,8 +40,11 @@ import {
   createEmptyNotes,
   createEmptyGrid,
   createGivenMask,
+  findNextCellWithValue,
   findNextInputIndex,
   indexToCell,
+  moveSelection,
+  resolveNavigationKey,
   parsePuzzleText,
   quickFillNotes,
   removeAllNotes,
@@ -156,6 +159,23 @@ export default function SudokuTutorPage() {
         return;
       }
 
+      // Arrow keys and WASD move the cell selection.
+      const direction = resolveNavigationKey(event.key);
+      if (direction) {
+        event.preventDefault();
+        setSelectedIndex((index) => moveSelection(index, direction));
+        return;
+      }
+
+      // Enter places the active quick-fill digit in the selected cell.
+      if (event.key === "Enter") {
+        if (quickFillMode && quickFillDigit !== null && grid[selectedIndex] !== quickFillDigit) {
+          event.preventDefault();
+          placeQuickFillAt(selectedIndex);
+        }
+        return;
+      }
+
       const value = resolveKeyboardInput(event.key);
       if (value === "ignored") {
         return;
@@ -220,11 +240,22 @@ export default function SudokuTutorPage() {
         return;
       }
 
+      // Re-pressing the active digit fills the selected cell when it does not
+      // already hold that number; the first press only locks the digit.
+      if (value === quickFillDigit && grid[selectedIndex] !== value) {
+        placeQuickFillAt(selectedIndex);
+        return;
+      }
+
       setQuickFillDigit(value);
+      const matchingCell = findNextCellWithValue(grid, value, selectedIndex);
+      if (matchingCell !== null) {
+        setSelectedIndex(matchingCell);
+      }
       setMessages([
         editingNotes
-          ? `Quick fill locked to ${value}. Click empty cells to add or remove that note.`
-          : `Quick fill locked to ${value}. Click editable cells to fill it.`
+          ? `Quick fill locked to ${value}. Press ${value} or Enter on an empty cell to add that note.`
+          : `Quick fill locked to ${value}. Press ${value} or Enter on a cell to fill it.`
       ]);
       return;
     }
@@ -245,6 +276,14 @@ export default function SudokuTutorPage() {
   function handleCellClick(index: number) {
     setSelectedIndex(index);
     if (!quickFillMode || quickFillDigit === null) {
+      return;
+    }
+
+    placeQuickFillAt(index);
+  }
+
+  function placeQuickFillAt(index: number) {
+    if (quickFillDigit === null) {
       return;
     }
 
@@ -839,6 +878,8 @@ export default function SudokuTutorPage() {
 const KEYBOARD_SHORTCUTS: Array<{ keys: string[]; label: string }> = [
   { keys: ["1", "–", "9"], label: "Enter a digit in the selected cell" },
   { keys: ["Space"], label: "Clear the selected cell" },
+  { keys: ["↑", "↓", "←", "→"], label: "Move between cells (or W A S D)" },
+  { keys: ["Enter"], label: "Fill the selected cell with the quick-fill digit" },
   { keys: ["Tab"], label: "Toggle pencil (notes) mode" },
   { keys: ["Ctrl", "Z"], label: "Undo the last board change" }
 ];

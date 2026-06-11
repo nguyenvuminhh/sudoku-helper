@@ -324,6 +324,50 @@ export function resolveKeyboardInput(key: string): CellValue | "ignored" {
   return "ignored";
 }
 
+export type NavDirection = "up" | "down" | "left" | "right";
+
+export function resolveNavigationKey(key: string): NavDirection | null {
+  switch (key) {
+    case "ArrowUp":
+    case "w":
+    case "W":
+      return "up";
+    case "ArrowDown":
+    case "s":
+    case "S":
+      return "down";
+    case "ArrowLeft":
+    case "a":
+    case "A":
+      return "left";
+    case "ArrowRight":
+    case "d":
+    case "D":
+      return "right";
+    default:
+      return null;
+  }
+}
+
+export function moveSelection(index: number, direction: NavDirection): number {
+  if (index < 0 || index > 80) {
+    return index;
+  }
+
+  const row = Math.floor(index / 9);
+  const col = index % 9;
+  switch (direction) {
+    case "up":
+      return Math.max(0, row - 1) * 9 + col;
+    case "down":
+      return Math.min(8, row + 1) * 9 + col;
+    case "left":
+      return row * 9 + Math.max(0, col - 1);
+    case "right":
+      return row * 9 + Math.min(8, col + 1);
+  }
+}
+
 export function findNextInputIndex(grid: SudokuGrid, currentIndex: number): number {
   for (let offset = 1; offset <= 81; offset += 1) {
     const index = (currentIndex + offset) % 81;
@@ -332,6 +376,20 @@ export function findNextInputIndex(grid: SudokuGrid, currentIndex: number): numb
     }
   }
   return currentIndex;
+}
+
+export function findNextCellWithValue(grid: SudokuGrid, value: number, fromIndex: number): number | null {
+  if (!DIGITS.includes(value as (typeof DIGITS)[number])) {
+    return null;
+  }
+
+  for (let offset = 1; offset <= 81; offset += 1) {
+    const index = (fromIndex + offset) % 81;
+    if (grid[index] === value) {
+      return index;
+    }
+  }
+  return null;
 }
 
 function collectValidationConflicts(grid: SudokuGrid): ValidationConflict[] {

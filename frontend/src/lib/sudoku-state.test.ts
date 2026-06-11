@@ -9,8 +9,11 @@ import {
   createEmptyNotes,
   createEmptyGrid,
   createGivenMask,
+  findNextCellWithValue,
   findNextInputIndex,
   gridToPayload,
+  moveSelection,
+  resolveNavigationKey,
   parsePuzzleText,
   quickFillNotes,
   removeAllNotes,
@@ -258,6 +261,44 @@ describe("sudoku-state", () => {
     stack = pushUndoSnapshot(stack, newest, 2);
 
     expect(stack.map((snapshot) => snapshot.selectedIndex)).toEqual([2, 1]);
+  });
+
+  it("maps arrow keys and WASD to navigation directions", () => {
+    expect(resolveNavigationKey("ArrowUp")).toBe("up");
+    expect(resolveNavigationKey("w")).toBe("up");
+    expect(resolveNavigationKey("S")).toBe("down");
+    expect(resolveNavigationKey("a")).toBe("left");
+    expect(resolveNavigationKey("ArrowRight")).toBe("right");
+    expect(resolveNavigationKey("q")).toBeNull();
+  });
+
+  it("moves the selection within the grid and clamps at the edges", () => {
+    expect(moveSelection(40, "up")).toBe(31); // R5C5 -> R4C5
+    expect(moveSelection(40, "down")).toBe(49);
+    expect(moveSelection(40, "left")).toBe(39);
+    expect(moveSelection(40, "right")).toBe(41);
+
+    expect(moveSelection(4, "up")).toBe(4); // top row stays put
+    expect(moveSelection(76, "down")).toBe(76); // bottom row stays put
+    expect(moveSelection(9, "left")).toBe(9); // first column stays put
+    expect(moveSelection(17, "right")).toBe(17); // last column stays put
+  });
+
+  it("cycles selection through cells holding a value", () => {
+    let grid = setCellValue(createEmptyGrid(), 4, 5);
+    grid = setCellValue(grid, 20, 5);
+    grid = setCellValue(grid, 60, 5);
+
+    expect(findNextCellWithValue(grid, 5, 0)).toBe(4);
+    expect(findNextCellWithValue(grid, 5, 4)).toBe(20);
+    expect(findNextCellWithValue(grid, 5, 60)).toBe(4); // wraps around
+    expect(findNextCellWithValue(grid, 7, 0)).toBeNull(); // no such value
+  });
+
+  it("returns the same cell when it is the only one holding the value", () => {
+    const grid = setCellValue(createEmptyGrid(), 40, 9);
+
+    expect(findNextCellWithValue(grid, 9, 40)).toBe(40);
   });
 
   it("solves a valid puzzle to its unique solution", () => {
