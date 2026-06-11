@@ -9,6 +9,7 @@ import {
   Grid3X3,
   History,
   ImageUp,
+  Keyboard,
   Lightbulb,
   Loader2,
   Pencil,
@@ -126,7 +127,27 @@ export default function SudokuTutorPage() {
 
   useEffect(() => {
     function handleWindowKeyDown(event: globalThis.KeyboardEvent) {
-      if (isEditableTarget(event.target) || event.altKey || event.ctrlKey || event.metaKey) {
+      if (isEditableTarget(event.target)) {
+        return;
+      }
+
+      // Ctrl/Cmd+Z undoes the last board change.
+      if ((event.ctrlKey || event.metaKey) && !event.altKey && !event.shiftKey && event.key.toLowerCase() === "z") {
+        event.preventDefault();
+        handleUndo();
+        return;
+      }
+
+      if (event.altKey || event.ctrlKey || event.metaKey) {
+        return;
+      }
+
+      // Tab toggles pencil (notes) mode while solving.
+      if (event.key === "Tab") {
+        if (isSolving) {
+          event.preventDefault();
+          handleToggleEditingNotes();
+        }
         return;
       }
 
@@ -141,7 +162,7 @@ export default function SudokuTutorPage() {
 
     window.addEventListener("keydown", handleWindowKeyDown);
     return () => window.removeEventListener("keydown", handleWindowKeyDown);
-  }, [editingNotes, givenMask, grid, lowConfidence, notes, phase, quickFillDigit, quickFillMode, selectedIndex]);
+  }, [editingNotes, givenMask, grid, lowConfidence, notes, phase, quickFillDigit, quickFillMode, selectedIndex, undoStack]);
 
   function recordUndoSnapshot() {
     setUndoStack((items) => pushUndoSnapshot(items, createBoardSnapshot(grid, notes, selectedIndex, lowConfidence)));
@@ -775,9 +796,47 @@ export default function SudokuTutorPage() {
               </ol>
             )}
           </div>
+
+          <ShortcutsPanel />
         </aside>
       </section>
     </main>
+  );
+}
+
+const KEYBOARD_SHORTCUTS: Array<{ keys: string[]; label: string }> = [
+  { keys: ["1", "–", "9"], label: "Enter a digit in the selected cell" },
+  { keys: ["Space"], label: "Clear the selected cell" },
+  { keys: ["Tab"], label: "Toggle pencil (notes) mode" },
+  { keys: ["Ctrl", "Z"], label: "Undo the last board change" }
+];
+
+function ShortcutsPanel() {
+  return (
+    <div className="shortcuts-panel">
+      <div className="panel-title">
+        <Keyboard size={18} />
+        <h2>Keyboard shortcuts</h2>
+      </div>
+      <dl className="shortcuts-list">
+        {KEYBOARD_SHORTCUTS.map((shortcut) => (
+          <div className="shortcut-row" key={shortcut.label}>
+            <dt>
+              {shortcut.keys.map((key, index) =>
+                key === "–" ? (
+                  <span className="shortcut-sep" key={`${shortcut.label}-sep-${index}`} aria-hidden="true">
+                    –
+                  </span>
+                ) : (
+                  <kbd key={`${shortcut.label}-${key}`}>{key}</kbd>
+                )
+              )}
+            </dt>
+            <dd>{shortcut.label}</dd>
+          </div>
+        ))}
+      </dl>
+    </div>
   );
 }
 
