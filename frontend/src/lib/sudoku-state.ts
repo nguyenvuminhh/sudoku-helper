@@ -302,6 +302,18 @@ export function applyOcrCells(
   return { grid: next, lowConfidence };
 }
 
+export function gridsEqual(left: SudokuGrid, right: SudokuGrid): boolean {
+  return left.length === right.length && left.every((value, index) => value === right[index]);
+}
+
+export function notesEqual(left: NotesGrid, right: NotesGrid): boolean {
+  return left.length === right.length && left.every((values, index) => numberListsEqual(values, right[index] ?? []));
+}
+
+export function numberListsEqual(left: number[], right: number[]): boolean {
+  return left.length === right.length && left.every((value, index) => value === right[index]);
+}
+
 export function indexToCell(index: number): { row: number; col: number } {
   return { row: Math.floor(index / 9) + 1, col: (index % 9) + 1 };
 }
