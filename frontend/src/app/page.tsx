@@ -471,12 +471,14 @@ export default function SudokuTutorPage() {
     setGivenMask(createGivenMask(grid));
     setNotes(createEmptyNotes());
     setEditingNotes(false);
-    setQuickFillMode(false);
+    setQuickFillMode(true);
     setQuickFillDigit(null);
     setCurrentHint(null);
     setUndoStack([]);
     setCheckResult(null);
-    setMessages(["Solving phase started. Loaded cells are locked; use notes and hints to work the puzzle."]);
+    setMessages([
+      "Solving phase started. Quick fill is on: pick a digit, then press it or Enter on a cell to place it. Loaded cells are locked."
+    ]);
   }
 
   function handleQuickFillMode() {

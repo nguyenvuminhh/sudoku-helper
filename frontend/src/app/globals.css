@@ -17,6 +17,7 @@
 
   /* Semantic surfaces + board highlights (overridden in dark mode). */
   --grid-line: var(--line-strong);
+  --cell-line: #bcc5c7;
   --panel-bg: rgba(255, 255, 255, 0.9);
   --card-bg: #f5f7f2;
   --field-bg: #fffef8;
@@ -64,6 +65,7 @@
   --shadow: 0 18px 50px rgba(0, 0, 0, 0.55);
 
   --grid-line: #000000;
+  --cell-line: #313e48;
   --panel-bg: rgba(27, 35, 43, 0.92);
   --card-bg: #151c23;
   --field-bg: #131a20;
@@ -222,7 +224,7 @@ h2 {
 .content-grid {
   display: grid;
   gap: 18px;
-  grid-template-columns: minmax(420px, 0.95fr) minmax(320px, 0.75fr);
+  grid-template-columns: minmax(0, 0.95fr) minmax(300px, 0.75fr);
   margin-top: 18px;
 }
 
@@ -259,23 +261,32 @@ h2 {
 
 .sudoku-board {
   aspect-ratio: 1;
-  background: var(--grid-line);
-  border: 3px solid var(--grid-line);
+  background: var(--cell-bg);
+  border: 2px solid var(--grid-line);
   display: grid;
-  gap: 1px;
   grid-template-columns: repeat(9, minmax(0, 1fr));
-  max-width: 680px;
+  grid-template-rows: repeat(9, minmax(0, 1fr));
+  margin-inline: auto;
   width: 100%;
+  /* Cap by both the column width and the viewport height so the square board
+     fits on screen, with a floor so it never collapses on short/landscape
+     viewports. Width: 100% still shrinks it on narrow screens. */
+  max-width: min(680px, max(300px, calc(100vh - 300px)));
+  max-width: min(680px, max(300px, calc(100svh - 300px)));
 }
 
 .sudoku-cell {
-  aspect-ratio: 1;
   background: var(--cell-bg);
+  /* Borders only (no grid gap) keep the lines crisp and aligned at any zoom. */
   border: 0;
+  border-right: 1px solid var(--cell-line);
+  border-bottom: 1px solid var(--cell-line);
   border-radius: 0;
   display: grid;
   box-shadow: none;
   min-height: 0;
+  min-width: 0;
+  overflow: hidden;
   padding: 0;
   place-items: center;
   position: relative;
@@ -287,12 +298,17 @@ h2 {
   transform: none;
 }
 
-.sudoku-cell:nth-child(3n) {
+/* Thick separators between the 3x3 boxes. */
+.sudoku-cell:nth-child(3n):not(:nth-child(9n)) {
   border-right: 2px solid var(--grid-line);
 }
 
 .sudoku-cell:nth-child(9n) {
   border-right: 0;
+}
+
+.sudoku-cell:nth-child(n + 73) {
+  border-bottom: 0;
 }
 
 .sudoku-cell:nth-child(n + 19):nth-child(-n + 27),
@@ -437,8 +453,11 @@ h2 {
   display: grid;
   gap: 8px;
   grid-template-columns: repeat(10, minmax(0, 1fr));
+  margin-inline: auto;
   margin-top: 14px;
-  max-width: 680px;
+  max-width: min(680px, max(300px, calc(100vh - 300px)));
+  max-width: min(680px, max(300px, calc(100svh - 300px)));
+  width: 100%;
 }
 
 .keypad button {
@@ -969,6 +988,45 @@ kbd {
 @keyframes spin {
   to {
     transform: rotate(360deg);
+  }
+}
+
+/* Desktop two-column shell: pin the header and board, scroll only the rail. */
+@media (min-width: 981px) {
+  .workspace {
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    height: 100dvh;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  .topbar {
+    flex: 0 0 auto;
+  }
+
+  .content-grid {
+    flex: 1 1 auto;
+    min-height: 0;
+  }
+
+  .board-zone {
+    align-self: start;
+  }
+
+  .inspector {
+    min-height: 0;
+    max-height: 100%;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    /* Keep it scrollable but hide the scrollbar chrome. */
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+
+  .inspector::-webkit-scrollbar {
+    display: none;
   }
 }
 
