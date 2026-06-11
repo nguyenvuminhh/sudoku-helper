@@ -1,6 +1,6 @@
 "use client";
 
-import { Grid3X3, RotateCcw } from "lucide-react";
+import { Grid3X3, Pause, PartyPopper, Play, RotateCcw, Timer } from "lucide-react";
 
 import { HintPanel } from "../components/HintPanel";
 import { HistoryPanel } from "../components/HistoryPanel";
@@ -15,6 +15,7 @@ import { useImageImport } from "../hooks/useImageImport";
 import { useKeyboardShortcuts } from "../hooks/useKeyboardShortcuts";
 import { useSudokuGame } from "../hooks/useSudokuGame";
 import { useTheme } from "../hooks/useTheme";
+import { formatElapsedSeconds } from "../lib/time";
 
 export default function SudokuTutorPage() {
   const game = useSudokuGame();
@@ -35,32 +36,70 @@ export default function SudokuTutorPage() {
                 R{game.selectedCell.row}C{game.selectedCell.col}
               </h2>
             </div>
-            <div className="meter" aria-label={`${game.filledCount} filled cells`}>
-              <span style={{ width: `${(game.filledCount / 81) * 100}%` }} />
+            <div className="board-tools">
+              {game.isSolving ? (
+                <>
+                  <span className="timer-chip" role="timer" aria-label={`Elapsed time ${formatElapsedSeconds(game.elapsedSeconds)}`}>
+                    <Timer size={15} />
+                    {formatElapsedSeconds(game.elapsedSeconds)}
+                  </span>
+                  <button
+                    type="button"
+                    className="pause-button"
+                    onClick={game.togglePause}
+                    disabled={game.isSolved}
+                    aria-label={game.paused ? "Resume the solve clock" : "Pause the solve clock"}
+                  >
+                    {game.paused ? <Play size={15} /> : <Pause size={15} />}
+                  </button>
+                </>
+              ) : null}
+              <div className="meter" aria-label={`${game.filledCount} filled cells`}>
+                <span style={{ width: `${(game.filledCount / 81) * 100}%` }} />
+              </div>
             </div>
           </div>
 
-          <SudokuBoard
-            grid={game.grid}
-            notes={game.notes}
-            givenMask={game.givenMask}
-            isSolving={game.isSolving}
-            selectedIndex={game.selectedIndex}
-            editingNotes={game.editingNotes}
-            activeHighlightDigit={game.activeHighlightDigit}
-            lowConfidence={game.lowConfidence}
-            hintPreview={game.hintPreview}
-            highlights={{
-              conflictIndexes: game.conflictIndexes,
-              incorrectIndexes: game.incorrectIndexes,
-              primaryIndexes: game.primaryIndexes,
-              relatedIndexes: game.relatedIndexes,
-              eliminationIndexes: game.eliminationIndexes,
-              matchingValueIndexes: game.matchingHighlights.valueIndexes,
-              matchingNoteIndexes: game.matchingHighlights.noteIndexes
-            }}
-            onCellClick={game.clickCell}
-          />
+          <div className="board-wrap">
+            <SudokuBoard
+              grid={game.grid}
+              notes={game.notes}
+              givenMask={game.givenMask}
+              isSolving={game.isSolving}
+              selectedIndex={game.selectedIndex}
+              editingNotes={game.editingNotes}
+              activeHighlightDigit={game.activeHighlightDigit}
+              lowConfidence={game.lowConfidence}
+              hintPreview={game.hintPreview}
+              highlights={{
+                conflictIndexes: game.conflictIndexes,
+                incorrectIndexes: game.incorrectIndexes,
+                primaryIndexes: game.primaryIndexes,
+                relatedIndexes: game.relatedIndexes,
+                eliminationIndexes: game.eliminationIndexes,
+                matchingValueIndexes: game.matchingHighlights.valueIndexes,
+                matchingNoteIndexes: game.matchingHighlights.noteIndexes,
+                peerIndexes: game.peerHighlightIndexes
+              }}
+              paused={game.paused}
+              onCellClick={game.clickCell}
+            />
+            {game.paused ? (
+              <div className="board-overlay" role="status">
+                <p>Paused</p>
+                <button type="button" onClick={game.togglePause}>
+                  <Play size={17} />
+                  Resume
+                </button>
+              </div>
+            ) : null}
+            {game.isSolved ? (
+              <div className="solve-banner" role="status">
+                <PartyPopper size={18} />
+                Solved in {formatElapsedSeconds(game.elapsedSeconds)}
+              </div>
+            ) : null}
+          </div>
 
           <Keypad
             digitCounts={game.digitCounts}
@@ -110,11 +149,13 @@ export default function SudokuTutorPage() {
                 <SolvingControls
                   busyLabel={game.busyLabel}
                   canUndo={game.undoStack.length > 0}
+                  canRedo={game.redoStack.length > 0}
                   editingNotes={game.editingNotes}
                   quickFillMode={game.quickFillMode}
                   isValid={game.validation.valid}
                   filledCount={game.filledCount}
                   onUndo={game.undo}
+                  onRedo={game.redo}
                   onToggleNotes={game.toggleNotesMode}
                   onToggleQuickFill={game.toggleQuickFillMode}
                   onFillAllNotes={game.fillAllNotes}

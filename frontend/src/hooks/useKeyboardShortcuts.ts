@@ -24,7 +24,27 @@ export function useKeyboardShortcuts(game: SudokuGame) {
         return;
       }
 
+      // Ctrl/Cmd+Y or Ctrl/Cmd+Shift+Z redoes the last undone change.
+      if (
+        (event.ctrlKey || event.metaKey) &&
+        !event.altKey &&
+        ((event.key.toLowerCase() === "y" && !event.shiftKey) || (event.key.toLowerCase() === "z" && event.shiftKey))
+      ) {
+        event.preventDefault();
+        current.redo();
+        return;
+      }
+
       if (event.altKey || event.ctrlKey || event.metaKey) {
+        return;
+      }
+
+      // P pauses or resumes the solve clock.
+      if (event.key.toLowerCase() === "p") {
+        if (current.isSolving) {
+          event.preventDefault();
+          current.togglePause();
+        }
         return;
       }
 

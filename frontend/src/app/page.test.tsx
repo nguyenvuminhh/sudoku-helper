@@ -171,6 +171,88 @@ describe("SudokuTutorPage", () => {
     expect(within(cell(1, 9)).getByText("9")).toBeDefined();
   });
 
+  it("tints the selected cell's row, column, and box peers", async () => {
+    const user = userEvent.setup();
+    render(<SudokuTutorPage />);
+
+    await user.click(cell(1, 1));
+
+    expect(cell(1, 9).className).toContain("peer-cell");
+    expect(cell(9, 1).className).toContain("peer-cell");
+    expect(cell(3, 3).className).toContain("peer-cell");
+    expect(cell(5, 5).className).not.toContain("peer-cell");
+  });
+
+  it("redoes an undone change", async () => {
+    const user = userEvent.setup();
+    render(<SudokuTutorPage />);
+
+    await loadSampleAndConfirm(user);
+    await user.click(screen.getByRole("button", { name: "5" }));
+    await user.click(cell(1, 1));
+    await user.click(screen.getByRole("button", { name: /undo last board change/i }));
+    expect(within(cell(1, 1)).queryByText("5")).toBeNull();
+
+    await user.click(screen.getByRole("button", { name: /redo last undone change/i }));
+
+    expect(within(cell(1, 1)).getByText("5")).toBeDefined();
+    expect(screen.getByText(/redid the last undone change/i)).toBeDefined();
+  });
+
+  it("pauses the clock, hides input, and resumes", async () => {
+    const user = userEvent.setup();
+    render(<SudokuTutorPage />);
+
+    await loadSampleAndConfirm(user);
+    await user.click(screen.getByRole("button", { name: /pause the solve clock/i }));
+
+    expect(screen.getByText("Paused")).toBeDefined();
+    // Cell clicks are ignored while paused.
+    await user.click(screen.getByRole("button", { name: "5" }));
+    await user.click(cell(1, 1));
+    expect(within(cell(1, 1)).queryByText("5")).toBeNull();
+
+    await user.click(screen.getByRole("button", { name: /^resume$/i }));
+    expect(screen.queryByText("Paused")).toBeNull();
+  });
+
+  it("celebrates a completed valid board", async () => {
+    const user = userEvent.setup();
+    const solution =
+      "534678912672195348198342567859761423426853791713924856961537284287419635345286179";
+    const puzzle = `${solution.slice(0, 80)}0`;
+    render(<SudokuTutorPage />);
+
+    await user.click(screen.getByLabelText(/81-character puzzle/i));
+    await user.paste(puzzle);
+    await user.click(screen.getByRole("button", { name: /load puzzle/i }));
+    await user.click(screen.getByRole("button", { name: /confirm/i }));
+
+    await user.click(screen.getByRole("button", { name: "9" }));
+    await user.click(cell(9, 9));
+
+    expect(screen.getByText(/solved in/i)).toBeDefined();
+    expect(screen.getByText(/solved! you completed the puzzle/i)).toBeDefined();
+  });
+
+  it("restores the saved session after a reload", async () => {
+    const user = userEvent.setup();
+    const first = render(<SudokuTutorPage />);
+
+    await loadSampleAndConfirm(user);
+    await user.click(screen.getByRole("button", { name: "5" }));
+    await user.click(cell(1, 1));
+    expect(within(cell(1, 1)).getByText("5")).toBeDefined();
+
+    first.unmount();
+    render(<SudokuTutorPage />);
+
+    expect(await screen.findByText(/restored your previous session/i)).toBeDefined();
+    expect(within(cell(1, 1)).getByText("5")).toBeDefined();
+    // Givens stay locked after the restore.
+    expect(cell(1, 4).getAttribute("aria-label")).toContain("loaded clue");
+  });
+
   it("keeps controls in the right rail above the strategy note", () => {
     render(<SudokuTutorPage />);
 

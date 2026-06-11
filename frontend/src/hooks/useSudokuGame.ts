@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import {
   requestGeneratedPuzzle,
@@ -17,6 +17,8 @@ import {
   generatedPuzzleMessage,
   type HintPreview
 } from "../lib/hints";
+import { parseSavedSession, serializeSession, SESSION_STORAGE_KEY } from "../lib/session";
+import { formatElapsedSeconds } from "../lib/time";
 import {
   applyHintEliminationsToNotes,
   applyOcrCells,
@@ -36,6 +38,7 @@ import {
   notesEqual,
   numberListsEqual,
   parsePuzzleText,
+  peerIndexes,
   quickFillNotes,
   removeAllNotes,
   restoreUndoSnapshot,
@@ -74,6 +77,10 @@ export function useSudokuGame() {
   const [quickFillDigit, setQuickFillDigit] = useState<number | null>(null);
   const [puzzleText, setPuzzleText] = useState("");
   const [generatedLevel, setGeneratedLevel] = useState<GeneratedLevel>("easy");
+  const [redoStack, setRedoStack] = useState<BoardSnapshot[]>([]);
+  const [paused, setPaused] = useState(false);
+  const [elapsedSeconds, setElapsedSeconds] = useState(0);
+  const [solvedAnnounced, setSolvedAnnounced] = useState(false);
 
   const filledCount = countFilledCells(grid);
   const digitCounts = useMemo(() => {
@@ -109,9 +116,69 @@ export function useSudokuGame() {
   const canApplyCurrentHint =
     !busyLabel &&
     (Boolean(hintPreview) || Boolean(currentHint?.action.type === "eliminate" && currentHint.action.eliminations.length > 0));
+  const isSolved = isSolving && filledCount === 81 && validation.valid;
+  const peerHighlightIndexes = useMemo(() => new Set(peerIndexes(selectedIndex)), [selectedIndex]);
+
+  // Restore a saved session once on mount so a refresh never loses the game.
+  useEffect(() => {
+    let saved;
+    try {
+      saved = parseSavedSession(window.localStorage.getItem(SESSION_STORAGE_KEY));
+    } catch {
+      return;
+    }
+    if (!saved) {
+      return;
+    }
+
+    setGrid(saved.grid);
+    setNotes(saved.notes);
+    setGivenMask(saved.givenMask);
+    setPhase(saved.phase);
+    setSelectedIndex(saved.selectedIndex);
+    setLowConfidence(saved.lowConfidence);
+    setElapsedSeconds(saved.elapsedSeconds);
+    if (saved.phase === "solving") {
+      setQuickFillMode(true);
+    }
+    setMessages(["Restored your previous session. Reset the puzzle to start fresh."]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Persist the board so the game survives reloads.
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(
+        SESSION_STORAGE_KEY,
+        serializeSession({ grid, notes, givenMask, phase, selectedIndex, lowConfidence, elapsedSeconds })
+      );
+    } catch {
+      // Storage may be unavailable (private mode, quota); play without saving.
+    }
+  }, [grid, notes, givenMask, phase, selectedIndex, lowConfidence, elapsedSeconds]);
+
+  // Tick the solve clock while actively solving.
+  useEffect(() => {
+    if (!isSolving || paused || isSolved) {
+      return;
+    }
+    const id = window.setInterval(() => setElapsedSeconds((seconds) => seconds + 1), 1000);
+    return () => window.clearInterval(id);
+  }, [isSolving, paused, isSolved]);
+
+  // Announce a completed board once, and re-arm if the user undoes back out.
+  useEffect(() => {
+    if (isSolved && !solvedAnnounced) {
+      setSolvedAnnounced(true);
+      setMessages([`Solved! You completed the puzzle in ${formatElapsedSeconds(elapsedSeconds)}.`]);
+    } else if (!isSolved && solvedAnnounced) {
+      setSolvedAnnounced(false);
+    }
+  }, [isSolved, solvedAnnounced, elapsedSeconds]);
 
   function recordUndoSnapshot() {
     setUndoStack((items) => pushUndoSnapshot(items, createBoardSnapshot(grid, notes, selectedIndex, lowConfidence)));
+    setRedoStack([]);
   }
 
   function undo() {
@@ -120,6 +187,7 @@ export function useSudokuGame() {
       return;
     }
 
+    setRedoStack((items) => pushUndoSnapshot(items, createBoardSnapshot(grid, notes, selectedIndex, lowConfidence)));
     setGrid(restored.snapshot.grid);
     setNotes(restored.snapshot.notes);
     setSelectedIndex(restored.snapshot.selectedIndex);
@@ -128,6 +196,32 @@ export function useSudokuGame() {
     setCurrentHint(null);
     setCheckResult(null);
     setMessages(["Undid the last board change."]);
+  }
+
+  function redo() {
+    const restored = restoreUndoSnapshot(redoStack);
+    if (!restored.snapshot) {
+      return;
+    }
+
+    setUndoStack((items) => pushUndoSnapshot(items, createBoardSnapshot(grid, notes, selectedIndex, lowConfidence)));
+    setGrid(restored.snapshot.grid);
+    setNotes(restored.snapshot.notes);
+    setSelectedIndex(restored.snapshot.selectedIndex);
+    setLowConfidence(restored.snapshot.lowConfidence);
+    setRedoStack(restored.stack);
+    setCurrentHint(null);
+    setCheckResult(null);
+    setMessages(["Redid the last undone change."]);
+  }
+
+  function togglePause() {
+    if (!isSolving || isSolved) {
+      return;
+    }
+    const next = !paused;
+    setPaused(next);
+    setMessages([next ? "Paused. The board is hidden until you resume." : "Resumed. The clock is running again."]);
   }
 
   function check() {
@@ -154,6 +248,9 @@ export function useSudokuGame() {
   }
 
   function pressDigit(value: number | null) {
+    if (paused) {
+      return;
+    }
     if (quickFillMode) {
       if (value === null) {
         setQuickFillDigit(null);
@@ -195,6 +292,9 @@ export function useSudokuGame() {
   }
 
   function clickCell(index: number) {
+    if (paused) {
+      return;
+    }
     setSelectedIndex(index);
     if (!quickFillMode || quickFillDigit === null) {
       return;
@@ -346,7 +446,11 @@ export function useSudokuGame() {
     setQuickFillDigit(null);
     setCurrentHint(null);
     setUndoStack([]);
+    setRedoStack([]);
     setCheckResult(null);
+    setPaused(false);
+    setElapsedSeconds(0);
+    setSolvedAnnounced(false);
     setMessages([
       "Solving phase started. Quick fill is on: pick a digit, then press it or Enter on a cell to place it. Loaded cells are locked."
     ]);
@@ -457,7 +561,11 @@ export function useSudokuGame() {
     setCurrentHint(null);
     setHistory([]);
     setUndoStack([]);
+    setRedoStack([]);
     setCheckResult(null);
+    setPaused(false);
+    setElapsedSeconds(0);
+    setSolvedAnnounced(false);
     setMessages(nextMessages);
   }
 
@@ -525,6 +633,11 @@ export function useSudokuGame() {
     incorrectIndexes,
     matchingHighlights,
     activeHighlightDigit,
+    peerHighlightIndexes,
+    // session state
+    isSolved,
+    paused,
+    elapsedSeconds,
     // ui state
     statusMessages,
     busyLabel,
@@ -534,12 +647,15 @@ export function useSudokuGame() {
     puzzleText,
     generatedLevel,
     undoStack,
+    redoStack,
     // actions
     pressDigit,
     clickCell,
     placeQuickFillAt,
     moveSelectionBy,
     undo,
+    redo,
+    togglePause,
     check,
     hint,
     applyHint,

@@ -11,6 +11,7 @@ export type BoardHighlights = {
   eliminationIndexes: Set<number>;
   matchingValueIndexes: Set<number>;
   matchingNoteIndexes: Set<number>;
+  peerIndexes: Set<number>;
 };
 
 export function SudokuBoard({
@@ -24,6 +25,7 @@ export function SudokuBoard({
   lowConfidence,
   hintPreview,
   highlights,
+  paused,
   onCellClick
 }: {
   grid: SudokuGrid;
@@ -36,10 +38,11 @@ export function SudokuBoard({
   lowConfidence: number[];
   hintPreview: HintPreview | null;
   highlights: BoardHighlights;
+  paused: boolean;
   onCellClick: (index: number) => void;
 }) {
   return (
-    <div className="sudoku-board" role="grid" aria-label="Sudoku grid">
+    <div className={paused ? "sudoku-board paused" : "sudoku-board"} role="grid" aria-label="Sudoku grid">
       {grid.map((value, index) => {
         const row = Math.floor(index / 9);
         const col = index % 9;
@@ -48,6 +51,7 @@ export function SudokuBoard({
         const shouldShowHintPreview = hintPreview?.index === index;
         const classes = [
           "sudoku-cell",
+          highlights.peerIndexes.has(index) ? "peer-cell" : "",
           selectedIndex === index ? "selected" : "",
           isGiven ? "locked-given" : "",
           editingNotes && selectedIndex === index ? "note-target" : "",

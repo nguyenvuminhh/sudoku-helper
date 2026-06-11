@@ -8,7 +8,9 @@ const KEYBOARD_SHORTCUTS: Array<{ keys: string[]; label: string }> = [
   { keys: ["↑", "↓", "←", "→"], label: "Move between cells (or W A S D)" },
   { keys: ["Enter"], label: "Fill the selected cell with the quick-fill digit" },
   { keys: ["Tab"], label: "Toggle pencil (notes) mode" },
-  { keys: ["Ctrl", "Z"], label: "Undo the last board change" }
+  { keys: ["Ctrl", "Z"], label: "Undo the last board change" },
+  { keys: ["Ctrl", "Y"], label: "Redo the last undone change" },
+  { keys: ["P"], label: "Pause or resume the solve clock" }
 ];
 
 export function ShortcutsPanel() {

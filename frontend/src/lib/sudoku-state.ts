@@ -302,6 +302,13 @@ export function applyOcrCells(
   return { grid: next, lowConfidence };
 }
 
+export function peerIndexes(index: number): number[] {
+  if (index < 0 || index > 80) {
+    return [];
+  }
+  return relatedIndexes(index).filter((peer) => peer !== index);
+}
+
 export function gridsEqual(left: SudokuGrid, right: SudokuGrid): boolean {
   return left.length === right.length && left.every((value, index) => value === right[index]);
 }
