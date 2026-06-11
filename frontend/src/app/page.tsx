@@ -13,10 +13,12 @@ import {
   Lightbulb,
   ListChecks,
   Loader2,
+  Moon,
   Pencil,
   Plus,
   RotateCcw,
   Sparkles,
+  Sun,
   Trash2,
   Undo2
 } from "lucide-react";
@@ -104,11 +106,21 @@ export default function SudokuTutorPage() {
   const [quickFillMode, setQuickFillMode] = useState(false);
   const [quickFillDigit, setQuickFillDigit] = useState<number | null>(null);
   const [isDraggingImage, setIsDraggingImage] = useState(false);
+  const [theme, setTheme] = useState<"light" | "dark">("light");
   const [puzzleText, setPuzzleText] = useState("");
   const [generatedLevel, setGeneratedLevel] = useState<GeneratedLevel>("easy");
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const filledCount = countFilledCells(grid);
+  const digitCounts = useMemo(() => {
+    const counts = new Array(10).fill(0);
+    for (const value of grid) {
+      if (value) {
+        counts[value] += 1;
+      }
+    }
+    return counts;
+  }, [grid]);
   const puzzleTextLength = useMemo(() => puzzleText.replace(/[^0-9.]/g, "").length, [puzzleText]);
   const selectedCell = indexToCell(selectedIndex);
   const isSolving = phase === "solving";
@@ -206,6 +218,22 @@ export default function SudokuTutorPage() {
     window.addEventListener("paste", handleWindowPaste);
     return () => window.removeEventListener("paste", handleWindowPaste);
   }, [busyLabel, phase]);
+
+  useEffect(() => {
+    // The inline script in layout.tsx has already applied the theme to the
+    // document; mirror it into React state so the toggle reflects reality.
+    const applied = document.documentElement.dataset.theme;
+    setTheme(applied === "dark" ? "dark" : "light");
+  }, []);
+
+  function toggleTheme() {
+    setTheme((current) => {
+      const next = current === "dark" ? "light" : "dark";
+      document.documentElement.dataset.theme = next;
+      window.localStorage.setItem("sudoku-theme", next);
+      return next;
+    });
+  }
 
   function recordUndoSnapshot() {
     setUndoStack((items) => pushUndoSnapshot(items, createBoardSnapshot(grid, notes, selectedIndex, lowConfidence)));
@@ -632,6 +660,15 @@ export default function SudokuTutorPage() {
           <p className="eyebrow">Puzzle Hint</p>
           <h1>Sudoku strategy desk</h1>
         </div>
+        <button
+          type="button"
+          className="theme-toggle"
+          onClick={toggleTheme}
+          aria-label={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+        >
+          {theme === "dark" ? <Sun size={17} /> : <Moon size={17} />}
+          {theme === "dark" ? "Light" : "Dark"}
+        </button>
       </section>
 
       <section className="content-grid">
@@ -710,7 +747,8 @@ export default function SudokuTutorPage() {
               <button
                 className={[
                   editingNotes && selectedNotes.includes(digit) ? "note-active" : "",
-                  quickFillDigit === digit ? "quick-fill-active" : ""
+                  quickFillDigit === digit ? "quick-fill-active" : "",
+                  digitCounts[digit] >= 9 ? "digit-complete" : ""
                 ]
                   .filter(Boolean)
                   .join(" ")}
