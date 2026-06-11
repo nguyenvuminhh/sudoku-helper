@@ -75,5 +75,11 @@ python3 -m uvicorn backend.app.main:app --host 127.0.0.1 --port 8001
 - The app should remain a distinct tutor workspace, not a clone of a Sudoku solver reference site.
 - Keyboard board entry uses digits `1`-`9`.
 - Empty cell entry uses `Space`, `Backspace`, `Delete`, or `0`.
-- Keyboard entry advances to the next empty cell automatically.
+- Keyboard entry advances to the next empty cell automatically (single selection only).
+- Entry modes are Normal, Corner notes, Center notes, and Color paint; `Tab`
+  cycles them and `Z`/`X`/`C`/`V` jump directly.
+- Cells support multi-selection: click-drag, `Alt`/`Ctrl`+click to add or
+  remove, `Shift`+arrows to extend. Digits, notes, and colors apply to the
+  whole selection.
 - Primary controls should live in the right rail beside the Sudoku board, above the strategy note.
+- A correct, complete board opens the finish dialog with solve statistics.

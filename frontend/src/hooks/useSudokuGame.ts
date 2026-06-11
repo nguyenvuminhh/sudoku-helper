@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import {
   requestGeneratedPuzzle,
@@ -8,7 +8,7 @@ import {
   requestHint,
   type HintResponse
 } from "../lib/api";
-import { SAMPLE_PUZZLE, type GeneratedLevel, type TutorPhase } from "../lib/constants";
+import { SAMPLE_PUZZLE, ENTRY_MODES, type EntryMode, type GeneratedLevel, type TutorPhase } from "../lib/constants";
 import {
   checkResultMessage,
   collectConflictIndexes,
@@ -24,63 +24,78 @@ import {
   applyOcrCells,
   cellToIndex,
   checkPuzzle,
+  cloneMarks,
   collectMatchingDigitHighlights,
   countFilledCells,
   createBoardSnapshot,
-  createEmptyNotes,
   createEmptyGrid,
+  createEmptyMarks,
   createGivenMask,
   findNextCellWithValue,
   findNextInputIndex,
   gridsEqual,
   indexToCell,
   moveSelection,
+  nextIncompleteDigit,
   notesEqual,
+  notesToCandidatePayload,
   numberListsEqual,
   parsePuzzleText,
   peerIndexes,
+  pruneEliminationsFromNotes,
+  pushUndoSnapshot,
   quickFillNotes,
-  removeAllNotes,
   restoreUndoSnapshot,
   setCellValue,
-  setCellValueWithNotes,
+  setCellValueWithMarks,
   toggleCellNote,
+  toggleColorOnCells,
+  toggleNoteOnCells,
   validateSudokuGrid,
-  pushUndoSnapshot,
+  type BoardMarks,
   type BoardSnapshot,
   type CheckResult,
   type GivenMask,
   type NavDirection,
-  type NotesGrid,
   type SudokuGrid
 } from "../lib/sudoku-state";
+import { useSettings } from "./useSettings";
 
 export type SudokuGame = ReturnType<typeof useSudokuGame>;
 
 export function useSudokuGame() {
   const [grid, setGrid] = useState<SudokuGrid>(() => createEmptyGrid());
-  const [notes, setNotes] = useState<NotesGrid>(() => createEmptyNotes());
+  const [marks, setMarks] = useState<BoardMarks>(() => createEmptyMarks());
   const [givenMask, setGivenMask] = useState<GivenMask>(() => createGivenMask(createEmptyGrid()));
   const [phase, setPhase] = useState<TutorPhase>("loading");
   const [selectedIndex, setSelectedIndex] = useState(0);
+  const [selectedIndexes, setSelectedIndexes] = useState<number[]>([0]);
   const [currentHint, setCurrentHint] = useState<HintResponse | null>(null);
   const [history, setHistory] = useState<HintResponse[]>([]);
   const [undoStack, setUndoStack] = useState<BoardSnapshot[]>([]);
+  const [redoStack, setRedoStack] = useState<BoardSnapshot[]>([]);
   const [checkResult, setCheckResult] = useState<CheckResult | null>(null);
   const [lowConfidence, setLowConfidence] = useState<number[]>([]);
   const [messages, setMessages] = useState<string[]>([
     "Enter a puzzle on the board or upload a clean Sudoku screenshot."
   ]);
   const [busyLabel, setBusyLabel] = useState<string | null>(null);
-  const [editingNotes, setEditingNotes] = useState(false);
+  const [entryMode, setEntryMode] = useState<EntryMode>("value");
   const [quickFillMode, setQuickFillMode] = useState(false);
   const [quickFillDigit, setQuickFillDigit] = useState<number | null>(null);
   const [puzzleText, setPuzzleText] = useState("");
   const [generatedLevel, setGeneratedLevel] = useState<GeneratedLevel>("easy");
-  const [redoStack, setRedoStack] = useState<BoardSnapshot[]>([]);
   const [paused, setPaused] = useState(false);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [solvedAnnounced, setSolvedAnnounced] = useState(false);
+  const [finishDismissed, setFinishDismissed] = useState(false);
+  const [hintsUsed, setHintsUsed] = useState(0);
+  const [checksUsed, setChecksUsed] = useState(0);
+  const [techniqueNames, setTechniqueNames] = useState<string[]>([]);
+  const { settings, setSetting } = useSettings();
+
+  const draggingRef = useRef(false);
+  const dragMovedRef = useRef(false);
 
   const filledCount = countFilledCells(grid);
   const digitCounts = useMemo(() => {
@@ -92,23 +107,26 @@ export function useSudokuGame() {
     }
     return counts;
   }, [grid]);
-  const puzzleTextLength = useMemo(() => puzzleText.replace(/[^0-9.]/g, "").length, [puzzleText]);
   const selectedCell = indexToCell(selectedIndex);
   const isSolving = phase === "solving";
   const selectedIsGiven = isSolving && givenMask[selectedIndex];
-  const selectedNotes = notes[selectedIndex] ?? [];
+  const selectionAllGiven = isSolving && selectedIndexes.every((index) => givenMask[index]);
+  const selectionAllFilled = selectedIndexes.every((index) => grid[index] !== null);
+  const selectedNotes =
+    entryMode === "corner" ? (marks.corner[selectedIndex] ?? []) : (marks.center[selectedIndex] ?? []);
   const activeHighlightDigit = quickFillDigit ?? grid[selectedIndex];
   const validation = useMemo(() => validateSudokuGrid(grid), [grid]);
   const statusMessages = validation.valid ? messages : ["Fix the highlighted conflicts before requesting a hint."];
   const conflictIndexes = useMemo(() => collectConflictIndexes(validation.conflicts), [validation]);
   const incorrectIndexes = useMemo(() => new Set(checkResult?.incorrectIndexes ?? []), [checkResult]);
   const matchingHighlights = useMemo(() => {
-    const highlights = collectMatchingDigitHighlights(grid, notes, activeHighlightDigit);
+    const center = collectMatchingDigitHighlights(grid, marks.center, activeHighlightDigit);
+    const corner = collectMatchingDigitHighlights(grid, marks.corner, activeHighlightDigit);
     return {
-      noteIndexes: new Set(highlights.noteIndexes),
-      valueIndexes: new Set(highlights.valueIndexes)
+      valueIndexes: new Set(center.valueIndexes),
+      noteIndexes: new Set([...center.noteIndexes, ...corner.noteIndexes])
     };
-  }, [activeHighlightDigit, grid, notes]);
+  }, [activeHighlightDigit, grid, marks]);
   const primaryIndexes = useMemo(() => collectHintCells(currentHint, "primary"), [currentHint]);
   const relatedIndexes = useMemo(() => collectHintCells(currentHint, "related"), [currentHint]);
   const eliminationIndexes = useMemo(() => collectHintCells(currentHint, "elimination"), [currentHint]);
@@ -117,7 +135,18 @@ export function useSudokuGame() {
     !busyLabel &&
     (Boolean(hintPreview) || Boolean(currentHint?.action.type === "eliminate" && currentHint.action.eliminations.length > 0));
   const isSolved = isSolving && filledCount === 81 && validation.valid;
+  const showFinishDialog = isSolved && !finishDismissed;
   const peerHighlightIndexes = useMemo(() => new Set(peerIndexes(selectedIndex)), [selectedIndex]);
+  const selectedIndexSet = useMemo(() => new Set(selectedIndexes), [selectedIndexes]);
+  const givensCount = useMemo(() => givenMask.filter(Boolean).length, [givenMask]);
+  const finishStats = {
+    elapsedSeconds,
+    hintsUsed,
+    checksUsed,
+    givens: givensCount,
+    filledByYou: 81 - givensCount,
+    techniques: techniqueNames
+  };
 
   // Restore a saved session once on mount so a refresh never loses the game.
   useEffect(() => {
@@ -132,12 +161,16 @@ export function useSudokuGame() {
     }
 
     setGrid(saved.grid);
-    setNotes(saved.notes);
+    setMarks(saved.marks);
     setGivenMask(saved.givenMask);
     setPhase(saved.phase);
     setSelectedIndex(saved.selectedIndex);
+    setSelectedIndexes([saved.selectedIndex]);
     setLowConfidence(saved.lowConfidence);
     setElapsedSeconds(saved.elapsedSeconds);
+    setHintsUsed(saved.hintsUsed);
+    setChecksUsed(saved.checksUsed);
+    setTechniqueNames(saved.techniqueNames);
     if (saved.phase === "solving") {
       setQuickFillMode(true);
     }
@@ -150,12 +183,23 @@ export function useSudokuGame() {
     try {
       window.localStorage.setItem(
         SESSION_STORAGE_KEY,
-        serializeSession({ grid, notes, givenMask, phase, selectedIndex, lowConfidence, elapsedSeconds })
+        serializeSession({
+          grid,
+          marks,
+          givenMask,
+          phase,
+          selectedIndex,
+          lowConfidence,
+          elapsedSeconds,
+          hintsUsed,
+          checksUsed,
+          techniqueNames
+        })
       );
     } catch {
       // Storage may be unavailable (private mode, quota); play without saving.
     }
-  }, [grid, notes, givenMask, phase, selectedIndex, lowConfidence, elapsedSeconds]);
+  }, [grid, marks, givenMask, phase, selectedIndex, lowConfidence, elapsedSeconds, hintsUsed, checksUsed, techniqueNames]);
 
   // Tick the solve clock while actively solving.
   useEffect(() => {
@@ -173,12 +217,65 @@ export function useSudokuGame() {
       setMessages([`Solved! You completed the puzzle in ${formatElapsedSeconds(elapsedSeconds)}.`]);
     } else if (!isSolved && solvedAnnounced) {
       setSolvedAnnounced(false);
+      setFinishDismissed(false);
     }
   }, [isSolved, solvedAnnounced, elapsedSeconds]);
 
+  // End a drag selection wherever the pointer is released.
+  useEffect(() => {
+    function handlePointerUp() {
+      draggingRef.current = false;
+    }
+    window.addEventListener("pointerup", handlePointerUp);
+    return () => window.removeEventListener("pointerup", handlePointerUp);
+  }, []);
+
+  function selectOnly(index: number) {
+    setSelectedIndex(index);
+    setSelectedIndexes([index]);
+  }
+
+  function beginCellSelection(index: number, additive: boolean) {
+    if (paused) {
+      return;
+    }
+    draggingRef.current = true;
+    dragMovedRef.current = false;
+    setSelectedIndex(index);
+    if (additive) {
+      setSelectedIndexes((current) => {
+        if (!current.includes(index)) {
+          return [...current, index];
+        }
+        const next = current.filter((item) => item !== index);
+        return next.length > 0 ? next : [index];
+      });
+    } else {
+      setSelectedIndexes([index]);
+    }
+  }
+
+  function dragCellSelection(index: number) {
+    if (paused || !draggingRef.current) {
+      return;
+    }
+    dragMovedRef.current = true;
+    setSelectedIndex(index);
+    setSelectedIndexes((current) => (current.includes(index) ? current : [...current, index]));
+  }
+
   function recordUndoSnapshot() {
-    setUndoStack((items) => pushUndoSnapshot(items, createBoardSnapshot(grid, notes, selectedIndex, lowConfidence)));
+    setUndoStack((items) => pushUndoSnapshot(items, createBoardSnapshot(grid, marks, selectedIndex, lowConfidence)));
     setRedoStack([]);
+  }
+
+  function restoreSnapshot(snapshot: BoardSnapshot) {
+    setGrid(snapshot.grid);
+    setMarks(snapshot.marks);
+    selectOnly(snapshot.selectedIndex);
+    setLowConfidence(snapshot.lowConfidence);
+    setCurrentHint(null);
+    setCheckResult(null);
   }
 
   function undo() {
@@ -187,14 +284,9 @@ export function useSudokuGame() {
       return;
     }
 
-    setRedoStack((items) => pushUndoSnapshot(items, createBoardSnapshot(grid, notes, selectedIndex, lowConfidence)));
-    setGrid(restored.snapshot.grid);
-    setNotes(restored.snapshot.notes);
-    setSelectedIndex(restored.snapshot.selectedIndex);
-    setLowConfidence(restored.snapshot.lowConfidence);
+    setRedoStack((items) => pushUndoSnapshot(items, createBoardSnapshot(grid, marks, selectedIndex, lowConfidence)));
+    restoreSnapshot(restored.snapshot);
     setUndoStack(restored.stack);
-    setCurrentHint(null);
-    setCheckResult(null);
     setMessages(["Undid the last board change."]);
   }
 
@@ -204,14 +296,9 @@ export function useSudokuGame() {
       return;
     }
 
-    setUndoStack((items) => pushUndoSnapshot(items, createBoardSnapshot(grid, notes, selectedIndex, lowConfidence)));
-    setGrid(restored.snapshot.grid);
-    setNotes(restored.snapshot.notes);
-    setSelectedIndex(restored.snapshot.selectedIndex);
-    setLowConfidence(restored.snapshot.lowConfidence);
+    setUndoStack((items) => pushUndoSnapshot(items, createBoardSnapshot(grid, marks, selectedIndex, lowConfidence)));
+    restoreSnapshot(restored.snapshot);
     setRedoStack(restored.stack);
-    setCurrentHint(null);
-    setCheckResult(null);
     setMessages(["Redid the last undone change."]);
   }
 
@@ -233,18 +320,37 @@ export function useSudokuGame() {
     const givens = grid.map((value, index) => (givenMask[index] ? value : null));
     const result = checkPuzzle(givens, grid);
     setCheckResult(result);
+    setChecksUsed((count) => count + 1);
     setMessages([checkResultMessage(result)]);
   }
 
-  function hasBoardStateChanged(nextGrid: SudokuGrid, nextNotes: NotesGrid, nextLowConfidence = lowConfidence): boolean {
-    return !gridsEqual(grid, nextGrid) || !notesEqual(notes, nextNotes) || !numberListsEqual(lowConfidence, nextLowConfidence);
+  function marksEqual(left: BoardMarks, right: BoardMarks): boolean {
+    return (
+      notesEqual(left.corner, right.corner) &&
+      notesEqual(left.center, right.center) &&
+      left.colors.length === right.colors.length &&
+      left.colors.every((color, index) => color === right.colors[index])
+    );
   }
 
-  function updateGrid(nextGrid: SudokuGrid, nextNotes = notes) {
+  function hasBoardStateChanged(nextGrid: SudokuGrid, nextMarks: BoardMarks, nextLowConfidence = lowConfidence): boolean {
+    return !gridsEqual(grid, nextGrid) || !marksEqual(marks, nextMarks) || !numberListsEqual(lowConfidence, nextLowConfidence);
+  }
+
+  function updateGrid(nextGrid: SudokuGrid, nextMarks = marks) {
     setGrid(nextGrid);
-    setNotes(nextNotes);
+    setMarks(nextMarks);
     setCurrentHint(null);
     setCheckResult(null);
+  }
+
+  /** Records an undo snapshot and applies a marks-only change. */
+  function commitMarks(nextMarks: BoardMarks) {
+    if (hasBoardStateChanged(grid, nextMarks)) {
+      recordUndoSnapshot();
+    }
+    setMarks(nextMarks);
+    setCurrentHint(null);
   }
 
   function pressDigit(value: number | null) {
@@ -258,44 +364,55 @@ export function useSudokuGame() {
         return;
       }
 
-      // Re-pressing the active digit fills the selected cell when it does not
-      // already hold that number; the first press only locks the digit.
-      if (value === quickFillDigit && grid[selectedIndex] !== value) {
-        placeQuickFillAt(selectedIndex);
+      // Re-pressing the active digit applies it to the selection; the first
+      // press only locks the digit.
+      if (value === quickFillDigit) {
+        placeQuickFillOnSelection();
         return;
       }
 
       setQuickFillDigit(value);
-      const matchingCell = findNextCellWithValue(grid, value, selectedIndex);
-      if (matchingCell !== null) {
-        setSelectedIndex(matchingCell);
+      if (selectedIndexes.length === 1) {
+        const matchingCell = findNextCellWithValue(grid, value, selectedIndex);
+        if (matchingCell !== null) {
+          selectOnly(matchingCell);
+        }
       }
       setMessages([
-        editingNotes
-          ? `Quick fill locked to ${value}. Press ${value} or Enter on an empty cell to add that note.`
-          : `Quick fill locked to ${value}. Press ${value} or Enter on a cell to fill it.`
+        entryMode === "value"
+          ? `Quick fill locked to ${value}. Press ${value} or Enter on a cell to fill it.`
+          : `Quick fill locked to ${value}. Press ${value} or Enter on cells to mark them.`
       ]);
       return;
     }
 
-    if (editingNotes && value !== null) {
-      toggleNote(value);
+    if (entryMode === "corner" || entryMode === "center") {
+      if (value === null) {
+        clearSelectedNotes();
+      } else {
+        toggleNoteOnSelection(value);
+      }
       return;
     }
 
-    if (editingNotes && value === null) {
-      clearSelectedNotes();
+    if (entryMode === "color") {
+      applyColorToSelection(value);
       return;
     }
 
-    applyCellValue(value, true);
+    applyValueToCells(selectedIndexes, value, selectedIndexes.length === 1);
   }
 
-  function clickCell(index: number) {
+  function clickCell(index: number, additive = false) {
     if (paused) {
       return;
     }
-    setSelectedIndex(index);
+    // Selection is handled on pointer down; a click only places the locked
+    // quick fill digit, and never during additive or drag selection.
+    if (additive || dragMovedRef.current) {
+      dragMovedRef.current = false;
+      return;
+    }
     if (!quickFillMode || quickFillDigit === null) {
       return;
     }
@@ -308,40 +425,74 @@ export function useSudokuGame() {
       return;
     }
 
-    if (editingNotes) {
+    if (entryMode === "corner" || entryMode === "center") {
       if (grid[index] !== null) {
         setMessages(["Notes can only be edited on empty cells."]);
         return;
       }
-
-      const nextNotes = toggleCellNote(notes, grid, index, quickFillDigit);
-      if (hasBoardStateChanged(grid, nextNotes)) {
-        recordUndoSnapshot();
-      }
-      setNotes(nextNotes);
-      setCurrentHint(null);
+      commitMarks({ ...marks, [entryMode]: toggleCellNote(marks[entryMode], grid, index, quickFillDigit) });
       return;
     }
 
-    applyCellValueAt(index, quickFillDigit, false);
+    if (entryMode === "color") {
+      commitMarks({ ...marks, colors: toggleColorOnCells(marks.colors, [index], quickFillDigit) });
+      return;
+    }
+
+    applyValueToCells([index], quickFillDigit, false);
   }
 
-  function toggleNote(digit: number) {
+  function placeQuickFillOnSelection() {
+    if (quickFillDigit === null) {
+      return;
+    }
+
+    if (entryMode === "corner" || entryMode === "center") {
+      toggleNoteOnSelection(quickFillDigit);
+      return;
+    }
+    if (entryMode === "color") {
+      applyColorToSelection(quickFillDigit);
+      return;
+    }
+
+    const targets = selectedIndexes.filter((index) => grid[index] !== quickFillDigit);
+    if (targets.length > 0) {
+      applyValueToCells(targets, quickFillDigit, false);
+      return;
+    }
+    // Nothing to fill: keep the old behavior of cycling to the next cell that
+    // already holds the locked digit.
+    if (selectedIndexes.length === 1) {
+      const matchingCell = findNextCellWithValue(grid, quickFillDigit, selectedIndex);
+      if (matchingCell !== null) {
+        selectOnly(matchingCell);
+      }
+    }
+  }
+
+  function toggleNoteOnSelection(digit: number) {
     if (!isSolving) {
       setMessages(["Start solving before editing notes."]);
       return;
     }
-    if (grid[selectedIndex] !== null) {
+    const layer = entryMode === "corner" ? "corner" : "center";
+    const emptyTargets = selectedIndexes.filter((index) => grid[index] === null);
+    if (emptyTargets.length === 0) {
       setMessages(["Notes can only be edited on empty cells."]);
       return;
     }
 
-    const nextNotes = toggleCellNote(notes, grid, selectedIndex, digit);
-    if (hasBoardStateChanged(grid, nextNotes)) {
-      recordUndoSnapshot();
+    commitMarks({ ...marks, [layer]: toggleNoteOnCells(marks[layer], grid, emptyTargets, digit) });
+  }
+
+  function applyColorToSelection(color: number | null) {
+    if (!isSolving) {
+      setMessages(["Start solving before highlighting cells."]);
+      return;
     }
-    setNotes(nextNotes);
-    setCurrentHint(null);
+
+    commitMarks({ ...marks, colors: toggleColorOnCells(marks.colors, selectedIndexes, color) });
   }
 
   function clearSelectedNotes() {
@@ -349,35 +500,56 @@ export function useSudokuGame() {
       return;
     }
 
-    const nextNotes = notes.map((cellNotes, index) => (index === selectedIndex ? [] : cellNotes));
-    if (hasBoardStateChanged(grid, nextNotes)) {
-      recordUndoSnapshot();
-    }
-    setNotes(nextNotes);
-    setCurrentHint(null);
+    const layer = entryMode === "corner" ? "corner" : "center";
+    const nextLayer = marks[layer].map((cellNotes, index) => (selectedIndexes.includes(index) ? [] : cellNotes));
+    commitMarks({ ...marks, [layer]: nextLayer });
   }
 
-  function applyCellValue(value: number | null, shouldAdvance: boolean) {
-    applyCellValueAt(selectedIndex, value, shouldAdvance);
-  }
-
-  function applyCellValueAt(index: number, value: number | null, shouldAdvance: boolean) {
-    if (!canEditCellValue(index)) {
+  function applyValueToCells(indexes: number[], value: number | null, shouldAdvance: boolean) {
+    const editable = indexes.filter((index) => canEditCellValue(index));
+    if (editable.length === 0) {
       setMessages(["Loaded cells are locked during solving."]);
       return;
     }
 
-    const result = isSolving
-      ? setCellValueWithNotes(grid, notes, index, value)
-      : { grid: setCellValue(grid, index, value), notes };
-    const nextLowConfidence = lowConfidence.filter((lowConfidenceIndex) => lowConfidenceIndex !== index);
-    if (isSolving && hasBoardStateChanged(result.grid, result.notes, nextLowConfidence)) {
+    let nextGrid = grid;
+    let nextMarks = marks;
+    for (const index of editable) {
+      if (isSolving) {
+        const result = setCellValueWithMarks(nextGrid, nextMarks, index, value);
+        nextGrid = result.grid;
+        nextMarks = result.marks;
+      } else {
+        nextGrid = setCellValue(nextGrid, index, value);
+      }
+    }
+
+    const nextLowConfidence = lowConfidence.filter((index) => !editable.includes(index));
+    if (isSolving && hasBoardStateChanged(nextGrid, nextMarks, nextLowConfidence)) {
       recordUndoSnapshot();
     }
-    updateGrid(result.grid, result.notes);
+    updateGrid(nextGrid, nextMarks);
     setLowConfidence(nextLowConfidence);
-    if (shouldAdvance && value !== null) {
-      setSelectedIndex(findNextInputIndex(result.grid, index));
+    if (shouldAdvance && value !== null && editable.length === 1) {
+      selectOnly(findNextInputIndex(nextGrid, editable[0]));
+    }
+    maybeAdvanceQuickFillDigit(nextGrid, value);
+  }
+
+  /** Moves quick fill to the next incomplete digit once the current one is done. */
+  function maybeAdvanceQuickFillDigit(nextGrid: SudokuGrid, placedValue: number | null) {
+    if (!settings.autoAdvanceDigit || !quickFillMode || placedValue === null || quickFillDigit !== placedValue) {
+      return;
+    }
+    const count = nextGrid.filter((value) => value === placedValue).length;
+    if (count < 9) {
+      return;
+    }
+
+    const next = nextIncompleteDigit(nextGrid, placedValue);
+    setQuickFillDigit(next);
+    if (next !== null) {
+      setMessages([`All ${placedValue}s are placed. Quick fill moved to ${next}.`]);
     }
   }
 
@@ -388,26 +560,31 @@ export function useSudokuGame() {
 
     if (hintPreview) {
       const cell = indexToCell(hintPreview.index);
-      const result = setCellValueWithNotes(grid, notes, hintPreview.index, hintPreview.digit);
+      const result = setCellValueWithMarks(grid, marks, hintPreview.index, hintPreview.digit);
       const nextLowConfidence = lowConfidence.filter((index) => index !== hintPreview.index);
-      if (hasBoardStateChanged(result.grid, result.notes, nextLowConfidence)) {
+      if (hasBoardStateChanged(result.grid, result.marks, nextLowConfidence)) {
         recordUndoSnapshot();
       }
-      updateGrid(result.grid, result.notes);
-      setSelectedIndex(hintPreview.index);
+      updateGrid(result.grid, result.marks);
+      selectOnly(hintPreview.index);
       setLowConfidence(nextLowConfidence);
       setMessages([`Applied ${hintPreview.digit} at R${cell.row}C${cell.col}. Request another hint when you are ready.`]);
+      maybeAdvanceQuickFillDigit(result.grid, hintPreview.digit);
       return;
     }
 
     if (currentHint.action.type === "eliminate" && currentHint.action.eliminations.length > 0) {
-      const nextNotes = applyHintEliminationsToNotes(grid, notes, currentHint.action.eliminations);
+      const nextMarks = {
+        ...marks,
+        center: applyHintEliminationsToNotes(grid, marks.center, currentHint.action.eliminations),
+        corner: pruneEliminationsFromNotes(marks.corner, currentHint.action.eliminations)
+      };
       const firstCell = currentHint.action.eliminations[0].cell;
-      if (hasBoardStateChanged(grid, nextNotes)) {
+      if (hasBoardStateChanged(grid, nextMarks)) {
         recordUndoSnapshot();
       }
-      updateGrid(grid, nextNotes);
-      setSelectedIndex(cellToIndex(firstCell));
+      updateGrid(grid, nextMarks);
+      selectOnly(cellToIndex(firstCell));
       setMessages([
         `Applied ${currentHint.action.eliminations.length} candidate elimination${currentHint.action.eliminations.length === 1 ? "" : "s"}. Request another hint when you are ready.`
       ]);
@@ -422,9 +599,13 @@ export function useSudokuGame() {
 
     setBusyLabel("Finding hint");
     try {
-      const nextHint = await requestHint(grid, notes);
+      const nextHint = await requestHint(grid, marks.center);
       setCurrentHint(nextHint);
       setHistory((items) => [nextHint, ...items].slice(0, 8));
+      setHintsUsed((count) => count + 1);
+      setTechniqueNames((names) =>
+        names.includes(nextHint.technique.name) ? names : [...names, nextHint.technique.name]
+      );
       setMessages(["Hint found. Review the conclusion, then expand through the evidence."]);
     } catch (error) {
       setMessages([error instanceof Error ? error.message : "Hint generation failed."]);
@@ -440,8 +621,8 @@ export function useSudokuGame() {
 
     setPhase("solving");
     setGivenMask(createGivenMask(grid));
-    setNotes(createEmptyNotes());
-    setEditingNotes(false);
+    setMarks(createEmptyMarks());
+    setEntryMode("value");
     setQuickFillMode(true);
     setQuickFillDigit(null);
     setCurrentHint(null);
@@ -451,6 +632,10 @@ export function useSudokuGame() {
     setPaused(false);
     setElapsedSeconds(0);
     setSolvedAnnounced(false);
+    setFinishDismissed(false);
+    setHintsUsed(0);
+    setChecksUsed(0);
+    setTechniqueNames([]);
     setMessages([
       "Solving phase started. Quick fill is on: pick a digit, then press it or Enter on a cell to place it. Loaded cells are locked."
     ]);
@@ -469,29 +654,31 @@ export function useSudokuGame() {
     }
     setMessages([
       nextQuickFillMode
-        ? editingNotes
-          ? "Quick fill enabled for notes. Select a digit, then click empty cells to add or remove that note."
-          : "Quick fill enabled. Select a digit, then click editable cells to fill it."
+        ? "Quick fill enabled. Select a digit, then click editable cells to apply it."
         : "Quick fill mode disabled."
     ]);
   }
 
-  function toggleNotesMode() {
+  function changeEntryMode(mode: EntryMode) {
     if (!isSolving) {
+      if (mode !== "value") {
+        setMessages(["Start solving before using marking modes."]);
+      }
       return;
     }
 
-    const nextEditingNotes = !editingNotes;
-    setEditingNotes(nextEditingNotes);
-    setMessages([
-      nextEditingNotes && quickFillMode
-        ? "Notes and quick fill are both on. Click empty cells to add or remove the locked note."
-        : nextEditingNotes
-          ? "Notes enabled. Select an empty cell, then choose digits to add or remove notes."
-          : quickFillMode
-            ? "Notes disabled. Quick fill will place values in editable cells."
-            : "Notes disabled."
-    ]);
+    setEntryMode(mode);
+    setMessages([entryModeMessage(mode)]);
+  }
+
+  function cycleEntryMode() {
+    if (!isSolving) {
+      return;
+    }
+    const order = ENTRY_MODES.map((mode) => mode.id);
+    const next = order[(order.indexOf(entryMode) + 1) % order.length];
+    setEntryMode(next);
+    setMessages([entryModeMessage(next)]);
   }
 
   function fillAllNotes() {
@@ -500,22 +687,12 @@ export function useSudokuGame() {
       return;
     }
 
-    const nextNotes = quickFillNotes(grid);
-    if (hasBoardStateChanged(grid, nextNotes)) {
-      recordUndoSnapshot();
-    }
-    setNotes(nextNotes);
-    setCurrentHint(null);
-    setMessages(["Filled notes for all empty cells from the current board."]);
+    commitMarks({ ...marks, center: quickFillNotes(grid) });
+    setMessages(["Filled center notes for all empty cells from the current board."]);
   }
 
   function clearAllNotes() {
-    const nextNotes = removeAllNotes(notes);
-    if (hasBoardStateChanged(grid, nextNotes)) {
-      recordUndoSnapshot();
-    }
-    setNotes(nextNotes);
-    setCurrentHint(null);
+    commitMarks({ ...marks, corner: marks.corner.map(() => []), center: marks.center.map(() => []) });
     setMessages(["Removed all notes."]);
   }
 
@@ -552,10 +729,10 @@ export function useSudokuGame() {
 
   function loadPuzzle(nextGrid: SudokuGrid, nextMessages: string[]) {
     setGrid(nextGrid);
-    setNotes(createEmptyNotes());
+    setMarks(createEmptyMarks());
     setGivenMask(createGivenMask(createEmptyGrid()));
     setPhase("loading");
-    setEditingNotes(false);
+    setEntryMode("value");
     setQuickFillMode(false);
     setQuickFillDigit(null);
     setCurrentHint(null);
@@ -566,6 +743,11 @@ export function useSudokuGame() {
     setPaused(false);
     setElapsedSeconds(0);
     setSolvedAnnounced(false);
+    setFinishDismissed(false);
+    setHintsUsed(0);
+    setChecksUsed(0);
+    setTechniqueNames([]);
+    selectOnly(selectedIndex);
     setMessages(nextMessages);
   }
 
@@ -597,8 +779,18 @@ export function useSudokuGame() {
     setLowConfidence([]);
   }
 
-  function moveSelectionBy(direction: NavDirection) {
-    setSelectedIndex((index) => moveSelection(index, direction));
+  function moveSelectionBy(direction: NavDirection, extend = false) {
+    const next = moveSelection(selectedIndex, direction);
+    setSelectedIndex(next);
+    if (extend) {
+      setSelectedIndexes((current) => (current.includes(next) ? current : [...current, next]));
+    } else {
+      setSelectedIndexes([next]);
+    }
+  }
+
+  function dismissFinish() {
+    setFinishDismissed(true);
   }
 
   function notify(message: string) {
@@ -608,13 +800,17 @@ export function useSudokuGame() {
   return {
     // board state
     grid,
-    notes,
+    marks,
     givenMask,
     phase,
     isSolving,
     selectedIndex,
+    selectedIndexes,
+    selectedIndexSet,
     selectedCell,
     selectedIsGiven,
+    selectionAllGiven,
+    selectionAllFilled,
     selectedNotes,
     filledCount,
     digitCounts,
@@ -636,22 +832,29 @@ export function useSudokuGame() {
     peerHighlightIndexes,
     // session state
     isSolved,
+    showFinishDialog,
+    finishStats,
     paused,
     elapsedSeconds,
     // ui state
     statusMessages,
     busyLabel,
-    editingNotes,
+    entryMode,
     quickFillMode,
     quickFillDigit,
     puzzleText,
     generatedLevel,
     undoStack,
     redoStack,
+    settings,
+    setSetting,
     // actions
     pressDigit,
     clickCell,
+    beginCellSelection,
+    dragCellSelection,
     placeQuickFillAt,
+    placeQuickFillOnSelection,
     moveSelectionBy,
     undo,
     redo,
@@ -661,7 +864,8 @@ export function useSudokuGame() {
     applyHint,
     startSolving,
     toggleQuickFillMode,
-    toggleNotesMode,
+    changeEntryMode,
+    cycleEntryMode,
     fillAllNotes,
     clearAllNotes,
     loadPuzzleFromText,
@@ -669,8 +873,22 @@ export function useSudokuGame() {
     loadSample,
     reset,
     importImageFile,
+    dismissFinish,
     notify,
     setPuzzleText,
     setGeneratedLevel
   };
+}
+
+function entryModeMessage(mode: EntryMode): string {
+  if (mode === "corner") {
+    return "Corner notes: digits mark the corners of selected empty cells.";
+  }
+  if (mode === "center") {
+    return "Center notes: digits collect in the middle of selected empty cells.";
+  }
+  if (mode === "color") {
+    return "Color mode: digits paint the selected cells. Press again to clear.";
+  }
+  return "Normal mode: digits fill the selected cells.";
 }

@@ -10,7 +10,11 @@ Sudoku-first puzzle hint website with a FastAPI backend and a static Next.js fro
 - Step-by-step hints with technique name, conclusion, layered explanation, highlights, and history.
 - Level-based puzzle generation backed by the Ukodus `sudoku-core` engine.
 - Row/column/box peer highlighting around the selected cell.
+- Corner notes, center notes, and a 9-color cell paint mode (`Tab` cycles modes, `Z`/`X`/`C`/`V` jump directly).
+- Multi-cell selection with click-drag, `Alt`/`Ctrl`+click, and `Shift`+arrows; entry applies to the whole selection.
 - Solve clock with pause (board hidden while paused) and automatic solved detection with elapsed time.
+- Finish dialog with solve statistics: time, hints and checks used, cells filled, and hint techniques encountered.
+- Keypad remaining-digit counts and auto-advancing quick fill digit, both toggleable in Settings.
 - Undo and redo (`Ctrl+Z` / `Ctrl+Y`), and the in-progress game survives page reloads via local storage.
 - FastAPI API routes under `/api/sudoku/*`.
 - Next.js static export that can be served by FastAPI or deployed separately.

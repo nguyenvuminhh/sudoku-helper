@@ -6,6 +6,7 @@ import {
   checkPuzzle,
   createBoardSnapshot,
   collectMatchingDigitHighlights,
+  createEmptyMarks,
   createEmptyNotes,
   createEmptyGrid,
   createGivenMask,
@@ -13,8 +14,10 @@ import {
   findNextInputIndex,
   gridToPayload,
   moveSelection,
+  nextIncompleteDigit,
   resolveNavigationKey,
   parsePuzzleText,
+  pruneEliminationsFromNotes,
   quickFillNotes,
   removeAllNotes,
   resolveKeyboardInput,
@@ -22,10 +25,14 @@ import {
   notesToCandidatePayload,
   pushUndoSnapshot,
   setCellValue,
+  setCellValueWithMarks,
   setCellValueWithNotes,
   solveSudoku,
   toggleCellNote,
-  validateSudokuGrid
+  toggleColorOnCells,
+  toggleNoteOnCells,
+  validateSudokuGrid,
+  type BoardMarks
 } from "./sudoku-state";
 
 const SOLVABLE_PUZZLE =
@@ -233,34 +240,110 @@ describe("sudoku-state", () => {
 
   it("stores and restores undo snapshots without sharing mutable board arrays", () => {
     const grid = setCellValue(createEmptyGrid(), 0, 5);
-    const notes = createEmptyNotes();
-    notes[1] = [2, 3];
+    const marks = createEmptyMarks();
+    marks.center[1] = [2, 3];
+    marks.colors[2] = 4;
     const lowConfidence = [8];
 
-    const stack = pushUndoSnapshot([], createBoardSnapshot(grid, notes, 1, lowConfidence));
+    const stack = pushUndoSnapshot([], createBoardSnapshot(grid, marks, 1, lowConfidence));
     grid[0] = 9;
-    notes[1].push(4);
+    marks.center[1].push(4);
+    marks.colors[2] = 7;
     lowConfidence.push(9);
 
     const restored = restoreUndoSnapshot(stack);
 
     expect(restored.snapshot?.grid[0]).toBe(5);
-    expect(restored.snapshot?.notes[1]).toEqual([2, 3]);
+    expect(restored.snapshot?.marks.center[1]).toEqual([2, 3]);
+    expect(restored.snapshot?.marks.colors[2]).toBe(4);
     expect(restored.snapshot?.selectedIndex).toBe(1);
     expect(restored.snapshot?.lowConfidence).toEqual([8]);
     expect(restored.stack).toEqual([]);
   });
 
   it("limits undo snapshots to the newest board states", () => {
-    const oldest = createBoardSnapshot(setCellValue(createEmptyGrid(), 0, 1), createEmptyNotes(), 0, []);
-    const middle = createBoardSnapshot(setCellValue(createEmptyGrid(), 1, 2), createEmptyNotes(), 1, []);
-    const newest = createBoardSnapshot(setCellValue(createEmptyGrid(), 2, 3), createEmptyNotes(), 2, []);
+    const oldest = createBoardSnapshot(setCellValue(createEmptyGrid(), 0, 1), createEmptyMarks(), 0, []);
+    const middle = createBoardSnapshot(setCellValue(createEmptyGrid(), 1, 2), createEmptyMarks(), 1, []);
+    const newest = createBoardSnapshot(setCellValue(createEmptyGrid(), 2, 3), createEmptyMarks(), 2, []);
 
     let stack = pushUndoSnapshot([], oldest, 2);
     stack = pushUndoSnapshot(stack, middle, 2);
     stack = pushUndoSnapshot(stack, newest, 2);
 
     expect(stack.map((snapshot) => snapshot.selectedIndex)).toEqual([2, 1]);
+  });
+
+  it("clears both note layers in the cell and prunes peers when placing a value", () => {
+    const grid = createEmptyGrid();
+    const marks: BoardMarks = createEmptyMarks();
+    marks.corner[0] = [1, 9];
+    marks.center[0] = [1, 2];
+    marks.corner[1] = [1, 4];
+    marks.center[9] = [1, 5];
+    marks.colors[0] = 3;
+
+    const result = setCellValueWithMarks(grid, marks, 0, 1);
+
+    expect(result.grid[0]).toBe(1);
+    expect(result.marks.corner[0]).toEqual([]);
+    expect(result.marks.center[0]).toEqual([]);
+    expect(result.marks.corner[1]).toEqual([4]);
+    expect(result.marks.center[9]).toEqual([5]);
+    expect(result.marks.colors[0]).toBe(3); // paint survives placement
+  });
+
+  it("smart-toggles a note across a multi-cell selection", () => {
+    const grid = setCellValue(createEmptyGrid(), 2, 7); // filled cells are skipped
+    let notes = createEmptyNotes();
+    notes[0] = [5];
+
+    // Mixed state: adds the note everywhere that lacks it.
+    notes = toggleNoteOnCells(notes, grid, [0, 1, 2], 5);
+    expect(notes[0]).toEqual([5]);
+    expect(notes[1]).toEqual([5]);
+    expect(notes[2]).toEqual([]);
+
+    // Uniform state: removes the note everywhere.
+    notes = toggleNoteOnCells(notes, grid, [0, 1], 5);
+    expect(notes[0]).toEqual([]);
+    expect(notes[1]).toEqual([]);
+  });
+
+  it("smart-toggles paint colors across a selection", () => {
+    let colors = toggleColorOnCells(createEmptyMarks().colors, [0, 1], 4);
+    expect(colors[0]).toBe(4);
+    expect(colors[1]).toBe(4);
+
+    colors = toggleColorOnCells(colors, [0, 1], 4); // same color clears
+    expect(colors[0]).toBeNull();
+    expect(colors[1]).toBeNull();
+
+    colors = toggleColorOnCells(colors, [0], 2);
+    colors = toggleColorOnCells(colors, [0], null); // explicit clear
+    expect(colors[0]).toBeNull();
+  });
+
+  it("prunes eliminations from notes without backfilling candidates", () => {
+    const notes = createEmptyNotes();
+    notes[3] = [4, 8];
+
+    const next = pruneEliminationsFromNotes(notes, [{ cell: { row: 1, col: 4 }, digit: 4 }]);
+
+    expect(next[3]).toEqual([8]);
+    expect(next[5]).toEqual([]); // untouched cells stay empty
+  });
+
+  it("finds the next incomplete digit with wrap-around", () => {
+    const grid = createEmptyGrid();
+    for (let i = 0; i < 9; i += 1) {
+      grid[i * 9] = 1; // digit 1 fully placed (ignoring validity for the test)
+    }
+
+    expect(nextIncompleteDigit(grid, 1)).toBe(2);
+    expect(nextIncompleteDigit(grid, 9)).toBe(2);
+
+    const full = parsePuzzleText(SOLVED_PUZZLE);
+    expect(nextIncompleteDigit(full, 5)).toBeNull();
   });
 
   it("maps arrow keys and WASD to navigation directions", () => {

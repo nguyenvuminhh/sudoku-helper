@@ -32,6 +32,16 @@
   --note-text: #2e3b43;
   --peer-bg: #eaf3f1;
 
+  --paint-1: #f3b9b0;
+  --paint-2: #f8d4a8;
+  --paint-3: #f6e69a;
+  --paint-4: #bfe3b4;
+  --paint-5: #abdfd6;
+  --paint-6: #b3d3f4;
+  --paint-7: #d2c0ef;
+  --paint-8: #f2bcdd;
+  --paint-9: #ccd3d9;
+
   --select-bg: #d6f0ec;
   --select-ring: var(--teal);
 
@@ -81,6 +91,16 @@
   --note-text: #aeb9c2;
   --peer-bg: #232f39;
 
+  --paint-1: #5e2c24;
+  --paint-2: #5e401f;
+  --paint-3: #5a5122;
+  --paint-4: #2e4b2b;
+  --paint-5: #1f4b45;
+  --paint-6: #25405f;
+  --paint-7: #3d3058;
+  --paint-8: #55294b;
+  --paint-9: #3a4148;
+
   --select-bg: #14403b;
   --select-ring: #38ccc2;
 
@@ -111,7 +131,7 @@ body {
     var(--paper);
   background-size: 44px 44px;
   color: var(--ink);
-  font-family: "Avenir Next", "Trebuchet MS", sans-serif;
+  font-family: var(--font-sans), "Segoe UI", system-ui, sans-serif;
 }
 
 button,
@@ -158,9 +178,11 @@ p {
 }
 
 h1,
-h2 {
-  font-family: "Iowan Old Style", Georgia, serif;
-  font-weight: 700;
+h2,
+h3 {
+  font-family: var(--font-serif), Georgia, serif;
+  font-weight: 600;
+  margin: 0;
 }
 
 .workspace {
@@ -277,6 +299,12 @@ h2 {
   max-width: min(680px, max(300px, calc(100svh - 300px)));
 }
 
+.sudoku-board {
+  touch-action: manipulation;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
 .sudoku-cell {
   background: var(--cell-bg);
   /* Borders only (no grid gap) keep the lines crisp and aligned at any zoom. */
@@ -284,6 +312,7 @@ h2 {
   border-right: 1px solid var(--cell-line);
   border-bottom: 1px solid var(--cell-line);
   border-radius: 0;
+  container-type: size;
   display: grid;
   box-shadow: none;
   min-height: 0;
@@ -321,9 +350,16 @@ h2 {
 .sudoku-cell strong {
   animation: cell-pop 160ms ease;
   color: var(--cell-text);
-  font-family: "Iowan Old Style", Georgia, serif;
+  font-family: var(--font-sans), "Segoe UI", system-ui, sans-serif;
   font-size: 2rem;
+  font-weight: 600;
   line-height: 1;
+}
+
+@supports (container-type: size) {
+  .sudoku-cell strong {
+    font-size: clamp(16px, 58cqh, 42px);
+  }
 }
 
 @keyframes cell-pop {
@@ -339,7 +375,8 @@ h2 {
 
 .sudoku-cell > strong,
 .sudoku-cell > .hint-preview-value,
-.sudoku-cell > .notes {
+.sudoku-cell > .corner-marks,
+.sudoku-cell > .center-marks {
   grid-area: 1 / 1;
 }
 
@@ -357,14 +394,26 @@ h2 {
   background: var(--peer-bg);
 }
 
-.sudoku-cell.selected {
-  background: var(--select-bg);
-  box-shadow: inset 0 0 0 3px var(--select-ring);
+/* User-applied paint colors win over peer tint and the given-cell wash. */
+.sudoku-cell.cell-paint-1 { background: var(--paint-1); }
+.sudoku-cell.cell-paint-2 { background: var(--paint-2); }
+.sudoku-cell.cell-paint-3 { background: var(--paint-3); }
+.sudoku-cell.cell-paint-4 { background: var(--paint-4); }
+.sudoku-cell.cell-paint-5 { background: var(--paint-5); }
+.sudoku-cell.cell-paint-6 { background: var(--paint-6); }
+.sudoku-cell.cell-paint-7 { background: var(--paint-7); }
+.sudoku-cell.cell-paint-8 { background: var(--paint-8); }
+.sudoku-cell.cell-paint-9 { background: var(--paint-9); }
+
+/* Cells swept into a multi-selection. The anchor keeps the thicker ring. */
+.sudoku-cell.in-selection {
+  box-shadow: inset 0 0 0 2px var(--select-ring);
   z-index: 1;
 }
 
-.sudoku-cell.note-target {
-  box-shadow: inset 0 0 0 3px var(--amber);
+.sudoku-cell.selected {
+  background: var(--select-bg);
+  box-shadow: inset 0 0 0 3px var(--select-ring);
   z-index: 1;
 }
 
@@ -436,37 +485,87 @@ h2 {
 
 .hint-preview-value {
   color: var(--hint-preview-text);
-  font-family: "Iowan Old Style", Georgia, serif;
+  font-family: var(--font-sans), "Segoe UI", system-ui, sans-serif;
   font-size: 2rem;
-  font-weight: 800;
+  font-weight: 700;
   line-height: 1;
   z-index: 0;
 }
 
-.notes {
+@supports (container-type: size) {
+  .hint-preview-value {
+    font-size: clamp(16px, 58cqh, 42px);
+  }
+}
+
+/* Corner marks claim the corners first, then edge midpoints, then the middle. */
+.corner-marks {
   color: var(--note-text);
   display: grid;
-  font-size: 0.72rem;
+  font-size: 0.66rem;
   font-weight: 700;
   grid-template-columns: repeat(3, 1fr);
-  height: 84%;
+  grid-template-rows: repeat(3, 1fr);
+  height: 94%;
   line-height: 1;
-  width: 84%;
+  width: 94%;
   z-index: 1;
 }
 
-.notes span {
+.corner-marks span {
   align-items: center;
   display: flex;
   justify-content: center;
   min-width: 0;
 }
 
-.notes span.same-digit-note {
+.corner-marks .slot-tl { grid-area: 1 / 1; }
+.corner-marks .slot-tr { grid-area: 1 / 3; }
+.corner-marks .slot-bl { grid-area: 3 / 1; }
+.corner-marks .slot-br { grid-area: 3 / 3; }
+.corner-marks .slot-tc { grid-area: 1 / 2; }
+.corner-marks .slot-bc { grid-area: 3 / 2; }
+.corner-marks .slot-ml { grid-area: 2 / 1; }
+.corner-marks .slot-mr { grid-area: 2 / 3; }
+.corner-marks .slot-cc { grid-area: 2 / 2; }
+
+/* Center marks sit as one compact row in the middle of the cell. */
+.center-marks {
+  align-items: center;
+  color: var(--note-text);
+  display: flex;
+  font-size: 0.78rem;
+  font-weight: 700;
+  gap: 1px;
+  justify-content: center;
+  line-height: 1;
+  max-width: 96%;
+  z-index: 1;
+}
+
+@supports (container-type: size) {
+  .corner-marks {
+    font-size: clamp(8px, 19cqh, 14px);
+  }
+
+  .center-marks {
+    font-size: clamp(9px, 24cqh, 16px);
+  }
+
+  .center-marks.dense {
+    font-size: clamp(7px, 17cqh, 12px);
+  }
+}
+
+.corner-marks span.same-digit-note,
+.center-marks span.same-digit-note {
   background: var(--teal);
   border-radius: 999px;
   color: #ffffff;
-  font-weight: 900;
+  font-weight: 800;
+  min-width: 1.25em;
+  padding: 0.08em;
+  text-align: center;
 }
 
 .keypad {
@@ -481,8 +580,52 @@ h2 {
 }
 
 .keypad button {
+  font-weight: 700;
   min-width: 0;
   padding: 0.5rem 0.2rem;
+  position: relative;
+}
+
+.keypad .remaining-count {
+  bottom: 2px;
+  color: var(--muted);
+  font-size: 0.58rem;
+  font-weight: 800;
+  line-height: 1;
+  position: absolute;
+  right: 4px;
+}
+
+.keypad button.quick-fill-active .remaining-count {
+  color: rgba(255, 255, 255, 0.85);
+}
+
+.keypad button.swatch {
+  padding: 0.3rem;
+}
+
+.swatch-chip {
+  border-radius: 6px;
+  display: block;
+  height: 100%;
+  min-height: 20px;
+  width: 100%;
+}
+
+.swatch.paint-1 .swatch-chip { background: var(--paint-1); }
+.swatch.paint-2 .swatch-chip { background: var(--paint-2); }
+.swatch.paint-3 .swatch-chip { background: var(--paint-3); }
+.swatch.paint-4 .swatch-chip { background: var(--paint-4); }
+.swatch.paint-5 .swatch-chip { background: var(--paint-5); }
+.swatch.paint-6 .swatch-chip { background: var(--paint-6); }
+.swatch.paint-7 .swatch-chip { background: var(--paint-7); }
+.swatch.paint-8 .swatch-chip { background: var(--paint-8); }
+.swatch.paint-9 .swatch-chip { background: var(--paint-9); }
+
+.keypad button.swatch.quick-fill-active {
+  background: var(--panel);
+  border-color: var(--teal-deep);
+  box-shadow: inset 0 0 0 2px var(--teal);
 }
 
 .keypad button.note-active {
@@ -767,6 +910,171 @@ h2 {
 .redo-action,
 .check-action {
   justify-content: center;
+}
+
+/* Segmented entry-mode control: Normal, Corner, Center, Color. */
+.mode-switcher {
+  background: var(--track-bg);
+  border: 1px solid var(--track-border);
+  border-radius: 10px;
+  display: grid;
+  gap: 4px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  padding: 4px;
+}
+
+.action-grid .mode-switcher .mode-option {
+  background: transparent;
+  border: 0;
+  border-radius: 7px;
+  box-shadow: none;
+  display: inline-flex;
+  flex-direction: column;
+  font-size: 0.7rem;
+  font-weight: 700;
+  gap: 4px;
+  justify-content: center;
+  min-height: 48px;
+  padding: 0.35rem 0.15rem;
+  transform: none;
+}
+
+.action-grid .mode-switcher .mode-option.active {
+  background: var(--panel);
+  box-shadow: 0 2px 8px rgba(17, 24, 39, 0.14);
+  color: var(--teal-deep);
+}
+
+.settings-list {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.settings-list .switch-copy {
+  font-size: 0.88rem;
+  text-align: left;
+}
+
+/* Finish dialog with the solve statistics. */
+.finish-backdrop {
+  align-items: center;
+  background: rgba(10, 15, 20, 0.55);
+  display: flex;
+  inset: 0;
+  justify-content: center;
+  padding: 20px;
+  position: fixed;
+  z-index: 50;
+}
+
+.finish-card {
+  animation: finish-pop 240ms ease;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  border-top: 6px solid var(--teal);
+  box-shadow: var(--shadow);
+  display: grid;
+  gap: 16px;
+  max-height: 90vh;
+  max-width: 440px;
+  overflow-y: auto;
+  padding: 24px;
+  width: 100%;
+}
+
+@keyframes finish-pop {
+  from {
+    opacity: 0;
+    transform: scale(0.94);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.finish-header {
+  color: var(--ink);
+  display: grid;
+  gap: 6px;
+  justify-items: center;
+  text-align: center;
+}
+
+.finish-header svg {
+  color: var(--teal);
+}
+
+.finish-header h2 {
+  font-size: 1.6rem;
+}
+
+.finish-header p {
+  color: var(--muted);
+}
+
+.finish-stats {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin: 0;
+}
+
+.finish-stats > div {
+  background: var(--card-bg);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  display: grid;
+  gap: 4px;
+  padding: 10px;
+}
+
+.finish-stats dt {
+  align-items: center;
+  color: var(--muted);
+  display: flex;
+  font-size: 0.7rem;
+  font-weight: 800;
+  gap: 6px;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.finish-stats dd {
+  font-size: 1.3rem;
+  font-variant-numeric: tabular-nums;
+  font-weight: 800;
+  margin: 0;
+}
+
+.finish-techniques h3 {
+  font-size: 0.92rem;
+}
+
+.finish-techniques ul {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+}
+
+.finish-techniques li {
+  background: var(--mint);
+  border-radius: 999px;
+  color: var(--teal-deep);
+  font-size: 0.78rem;
+  font-weight: 700;
+  padding: 0.26rem 0.62rem;
+}
+
+.finish-actions {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
 .note-action-row button,
@@ -1054,7 +1362,8 @@ kbd {
 }
 
 .sudoku-board.paused .sudoku-cell strong,
-.sudoku-board.paused .sudoku-cell .notes,
+.sudoku-board.paused .sudoku-cell .corner-marks,
+.sudoku-board.paused .sudoku-cell .center-marks,
 .sudoku-board.paused .sudoku-cell .hint-preview-value {
   visibility: hidden;
 }
@@ -1071,9 +1380,9 @@ kbd {
 }
 
 .board-overlay p {
-  font-family: "Iowan Old Style", Georgia, serif;
+  font-family: var(--font-serif), Georgia, serif;
   font-size: 1.6rem;
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .solve-banner {
@@ -1111,7 +1420,8 @@ kbd {
 
 @media (prefers-reduced-motion: reduce) {
   .sudoku-cell strong,
-  .solve-banner {
+  .solve-banner,
+  .finish-card {
     animation: none;
   }
 
@@ -1213,7 +1523,11 @@ kbd {
     font-size: 1.35rem;
   }
 
-  .notes {
-    font-size: 0.52rem;
+  .corner-marks {
+    font-size: 0.5rem;
+  }
+
+  .center-marks {
+    font-size: 0.56rem;
   }
 }

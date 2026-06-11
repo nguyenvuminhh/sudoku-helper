@@ -1,18 +1,28 @@
 "use client";
 
-import { Crosshair, Lightbulb, ListChecks, Loader2, Pencil, Plus, Redo2, Trash2, Undo2 } from "lucide-react";
+import { Crosshair, Lightbulb, ListChecks, Loader2, Palette, Pencil, PenLine, Plus, Redo2, Trash2, Type, Undo2 } from "lucide-react";
+
+import { ENTRY_MODES, type EntryMode } from "../lib/constants";
+import { SwitchRow } from "./SwitchRow";
+
+const MODE_ICONS: Record<EntryMode, React.ReactNode> = {
+  value: <Type size={15} />,
+  corner: <PenLine size={15} />,
+  center: <Pencil size={15} />,
+  color: <Palette size={15} />
+};
 
 export function SolvingControls({
   busyLabel,
   canUndo,
   canRedo,
-  editingNotes,
+  entryMode,
   quickFillMode,
   isValid,
   filledCount,
   onUndo,
   onRedo,
-  onToggleNotes,
+  onEntryModeChange,
   onToggleQuickFill,
   onFillAllNotes,
   onRemoveAllNotes,
@@ -22,13 +32,13 @@ export function SolvingControls({
   busyLabel: string | null;
   canUndo: boolean;
   canRedo: boolean;
-  editingNotes: boolean;
+  entryMode: EntryMode;
   quickFillMode: boolean;
   isValid: boolean;
   filledCount: number;
   onUndo: () => void;
   onRedo: () => void;
-  onToggleNotes: () => void;
+  onEntryModeChange: (mode: EntryMode) => void;
   onToggleQuickFill: () => void;
   onFillAllNotes: () => void;
   onRemoveAllNotes: () => void;
@@ -59,7 +69,21 @@ export function SolvingControls({
           Redo
         </button>
       </div>
-      <SwitchRow active={editingNotes} icon={<Pencil size={17} />} label="Notes" onClick={onToggleNotes} />
+      <div className="mode-switcher" role="radiogroup" aria-label="Entry mode">
+        {ENTRY_MODES.map((mode) => (
+          <button
+            key={mode.id}
+            type="button"
+            role="radio"
+            aria-checked={entryMode === mode.id}
+            className={entryMode === mode.id ? "mode-option active" : "mode-option"}
+            onClick={() => onEntryModeChange(mode.id)}
+          >
+            {MODE_ICONS[mode.id]}
+            {mode.label}
+          </button>
+        ))}
+      </div>
       <SwitchRow active={quickFillMode} icon={<Crosshair size={17} />} label="Quick fill" onClick={onToggleQuickFill} />
       <div className="note-action-row">
         <button type="button" onClick={onFillAllNotes} disabled={!isValid}>
@@ -91,36 +115,5 @@ export function SolvingControls({
         Hint
       </button>
     </div>
-  );
-}
-
-function SwitchRow({
-  active,
-  icon,
-  label,
-  onClick
-}: {
-  active: boolean;
-  icon: React.ReactNode;
-  label: string;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      className={active ? "switch-row active" : "switch-row"}
-      onClick={onClick}
-      role="switch"
-      aria-checked={active}
-      aria-label={label}
-    >
-      <span className="switch-copy">
-        {icon}
-        {label}
-      </span>
-      <span className="switch-track" aria-hidden="true">
-        <span className="switch-thumb" />
-      </span>
-    </button>
   );
 }

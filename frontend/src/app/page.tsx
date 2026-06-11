@@ -2,10 +2,12 @@
 
 import { Grid3X3, Pause, PartyPopper, Play, RotateCcw, Timer } from "lucide-react";
 
+import { FinishDialog } from "../components/FinishDialog";
 import { HintPanel } from "../components/HintPanel";
 import { HistoryPanel } from "../components/HistoryPanel";
 import { Keypad } from "../components/Keypad";
 import { LoadingControls } from "../components/LoadingControls";
+import { SettingsPanel } from "../components/SettingsPanel";
 import { ShortcutsPanel } from "../components/ShortcutsPanel";
 import { SolvingControls } from "../components/SolvingControls";
 import { StatusPanel } from "../components/StatusPanel";
@@ -63,11 +65,11 @@ export default function SudokuTutorPage() {
           <div className="board-wrap">
             <SudokuBoard
               grid={game.grid}
-              notes={game.notes}
+              marks={game.marks}
               givenMask={game.givenMask}
               isSolving={game.isSolving}
               selectedIndex={game.selectedIndex}
-              editingNotes={game.editingNotes}
+              selectedIndexSet={game.selectedIndexSet}
               activeHighlightDigit={game.activeHighlightDigit}
               lowConfidence={game.lowConfidence}
               hintPreview={game.hintPreview}
@@ -82,6 +84,8 @@ export default function SudokuTutorPage() {
                 peerIndexes: game.peerHighlightIndexes
               }}
               paused={game.paused}
+              onCellPointerDown={game.beginCellSelection}
+              onCellPointerEnter={game.dragCellSelection}
               onCellClick={game.clickCell}
             />
             {game.paused ? (
@@ -93,7 +97,7 @@ export default function SudokuTutorPage() {
                 </button>
               </div>
             ) : null}
-            {game.isSolved ? (
+            {game.isSolved && !game.showFinishDialog ? (
               <div className="solve-banner" role="status">
                 <PartyPopper size={18} />
                 Solved in {formatElapsedSeconds(game.elapsedSeconds)}
@@ -106,10 +110,11 @@ export default function SudokuTutorPage() {
             selectedNotes={game.selectedNotes}
             quickFillDigit={game.quickFillDigit}
             quickFillMode={game.quickFillMode}
-            editingNotes={game.editingNotes}
+            entryMode={game.entryMode}
             isSolving={game.isSolving}
-            selectedIsGiven={game.selectedIsGiven}
-            selectedCellFilled={game.grid[game.selectedIndex] !== null}
+            selectionAllGiven={game.selectionAllGiven}
+            selectionAllFilled={game.selectionAllFilled}
+            showRemainingCounts={game.settings.showRemainingCounts}
             onDigit={game.pressDigit}
           />
         </section>
@@ -150,13 +155,13 @@ export default function SudokuTutorPage() {
                   busyLabel={game.busyLabel}
                   canUndo={game.undoStack.length > 0}
                   canRedo={game.redoStack.length > 0}
-                  editingNotes={game.editingNotes}
+                  entryMode={game.entryMode}
                   quickFillMode={game.quickFillMode}
                   isValid={game.validation.valid}
                   filledCount={game.filledCount}
                   onUndo={game.undo}
                   onRedo={game.redo}
-                  onToggleNotes={game.toggleNotesMode}
+                  onEntryModeChange={game.changeEntryMode}
                   onToggleQuickFill={game.toggleQuickFillMode}
                   onFillAllNotes={game.fillAllNotes}
                   onRemoveAllNotes={game.clearAllNotes}
@@ -180,9 +185,15 @@ export default function SudokuTutorPage() {
 
           <HistoryPanel history={game.history} />
 
+          <SettingsPanel settings={game.settings} onSettingChange={game.setSetting} />
+
           <ShortcutsPanel />
         </aside>
       </section>
+
+      {game.showFinishDialog ? (
+        <FinishDialog stats={game.finishStats} onNewPuzzle={game.reset} onClose={game.dismissFinish} />
+      ) : null}
     </main>
   );
 }

@@ -2,49 +2,83 @@
 
 import { Eraser } from "lucide-react";
 
+import { PAINT_COLOR_NAMES, type EntryMode } from "../lib/constants";
+
 export function Keypad({
   digitCounts,
   selectedNotes,
   quickFillDigit,
   quickFillMode,
-  editingNotes,
+  entryMode,
   isSolving,
-  selectedIsGiven,
-  selectedCellFilled,
+  selectionAllGiven,
+  selectionAllFilled,
+  showRemainingCounts,
   onDigit
 }: {
   digitCounts: number[];
   selectedNotes: number[];
   quickFillDigit: number | null;
   quickFillMode: boolean;
-  editingNotes: boolean;
+  entryMode: EntryMode;
   isSolving: boolean;
-  selectedIsGiven: boolean;
-  selectedCellFilled: boolean;
+  selectionAllGiven: boolean;
+  selectionAllFilled: boolean;
+  showRemainingCounts: boolean;
   onDigit: (value: number | null) => void;
 }) {
-  const digitDisabled = quickFillMode ? !isSolving : editingNotes ? !isSolving || selectedCellFilled : selectedIsGiven;
-  const eraseDisabled = quickFillMode ? !isSolving : editingNotes ? !isSolving : selectedIsGiven;
+  const noteMode = entryMode === "corner" || entryMode === "center";
+  const digitDisabled = quickFillMode
+    ? !isSolving
+    : noteMode
+      ? !isSolving || selectionAllFilled
+      : entryMode === "color"
+        ? !isSolving
+        : selectionAllGiven;
+  const eraseDisabled = quickFillMode ? !isSolving : noteMode || entryMode === "color" ? !isSolving : selectionAllGiven;
 
   return (
     <div className="keypad" aria-label="Digit entry">
-      {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((digit) => (
-        <button
-          className={[
-            editingNotes && selectedNotes.includes(digit) ? "note-active" : "",
-            quickFillDigit === digit ? "quick-fill-active" : "",
-            digitCounts[digit] >= 9 ? "digit-complete" : ""
-          ]
-            .filter(Boolean)
-            .join(" ")}
-          disabled={digitDisabled}
-          key={digit}
-          type="button"
-          onClick={() => onDigit(digit)}
-        >
-          {digit}
-        </button>
-      ))}
+      {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((digit) => {
+        const remaining = Math.max(0, 9 - (digitCounts[digit] ?? 0));
+        if (entryMode === "color") {
+          return (
+            <button
+              className={`swatch paint-${digit}${quickFillDigit === digit ? " quick-fill-active" : ""}`}
+              disabled={digitDisabled}
+              key={digit}
+              type="button"
+              aria-label={`Paint ${PAINT_COLOR_NAMES[digit]}`}
+              onClick={() => onDigit(digit)}
+            >
+              <span className="swatch-chip" aria-hidden="true" />
+            </button>
+          );
+        }
+
+        return (
+          <button
+            className={[
+              noteMode && selectedNotes.includes(digit) ? "note-active" : "",
+              quickFillDigit === digit ? "quick-fill-active" : "",
+              digitCounts[digit] >= 9 ? "digit-complete" : ""
+            ]
+              .filter(Boolean)
+              .join(" ")}
+            disabled={digitDisabled}
+            key={digit}
+            type="button"
+            onClick={() => onDigit(digit)}
+          >
+            {digit}
+            {showRemainingCounts && remaining > 0 ? (
+              <span className="remaining-count" aria-hidden="true">
+                {remaining}
+              </span>
+            ) : null}
+          </button>
+        );
+      })}
       <button type="button" onClick={() => onDigit(null)} disabled={eraseDisabled} aria-label="Erase cell">
         <Eraser size={16} />
       </button>

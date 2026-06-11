@@ -3,11 +3,14 @@
 import { Keyboard } from "lucide-react";
 
 const KEYBOARD_SHORTCUTS: Array<{ keys: string[]; label: string }> = [
-  { keys: ["1", "–", "9"], label: "Enter a digit in the selected cell" },
-  { keys: ["Space"], label: "Clear the selected cell" },
+  { keys: ["1", "–", "9"], label: "Enter a digit, note, or color in the selected cells" },
+  { keys: ["Space"], label: "Clear the selected cells" },
   { keys: ["↑", "↓", "←", "→"], label: "Move between cells (or W A S D)" },
-  { keys: ["Enter"], label: "Fill the selected cell with the quick-fill digit" },
-  { keys: ["Tab"], label: "Toggle pencil (notes) mode" },
+  { keys: ["Shift", "↑↓←→"], label: "Extend the selection while moving" },
+  { keys: ["Alt", "Click"], label: "Add or remove a cell from the selection (drag also selects)" },
+  { keys: ["Enter"], label: "Apply the quick-fill digit to the selection" },
+  { keys: ["Tab"], label: "Cycle entry mode (Normal, Corner, Center, Color)" },
+  { keys: ["Z", "X", "C", "V"], label: "Jump to Normal, Corner, Center, or Color mode" },
   { keys: ["Ctrl", "Z"], label: "Undo the last board change" },
   { keys: ["Ctrl", "Y"], label: "Redo the last undone change" },
   { keys: ["P"], label: "Pause or resume the solve clock" }
