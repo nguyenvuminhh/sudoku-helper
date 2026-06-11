@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   applyOcrCells,
   applyHintEliminationsToNotes,
+  checkPuzzle,
   createBoardSnapshot,
   collectMatchingDigitHighlights,
   createEmptyNotes,
@@ -19,9 +20,15 @@ import {
   pushUndoSnapshot,
   setCellValue,
   setCellValueWithNotes,
+  solveSudoku,
   toggleCellNote,
   validateSudokuGrid
 } from "./sudoku-state";
+
+const SOLVABLE_PUZZLE =
+  "530070000600195000098000060800060003400803001700020006060000280000419005000080079";
+const SOLVED_PUZZLE =
+  "534678912672195348198342567859761423426853791713924856961537284287419635345286179";
 
 describe("sudoku-state", () => {
   it("parses zero and dot puzzle text into 81 cells", () => {
@@ -251,5 +258,43 @@ describe("sudoku-state", () => {
     stack = pushUndoSnapshot(stack, newest, 2);
 
     expect(stack.map((snapshot) => snapshot.selectedIndex)).toEqual([2, 1]);
+  });
+
+  it("solves a valid puzzle to its unique solution", () => {
+    const solution = solveSudoku(parsePuzzleText(SOLVABLE_PUZZLE));
+
+    expect(solution).not.toBeNull();
+    expect(solution?.map((value) => value ?? 0).join("")).toBe(SOLVED_PUZZLE);
+  });
+
+  it("returns null when the givens have no valid solution", () => {
+    const broken = setCellValue(parsePuzzleText(SOLVABLE_PUZZLE), 1, 5); // duplicate 5 in the top band
+
+    expect(solveSudoku(broken)).toBeNull();
+  });
+
+  it("flags entries that do not match the solution as wrong", () => {
+    const givens = parsePuzzleText(SOLVABLE_PUZZLE);
+    const wrong = setCellValue(givens, 2, 1); // solution at index 2 is 4, not 1
+
+    const result = checkPuzzle(givens, wrong);
+
+    expect(result.status).toBe("incorrect");
+    expect(result.incorrectIndexes).toEqual([2]);
+  });
+
+  it("reports a fully correct board as solved", () => {
+    const result = checkPuzzle(parsePuzzleText(SOLVABLE_PUZZLE), parsePuzzleText(SOLVED_PUZZLE));
+
+    expect(result.status).toBe("solved");
+    expect(result.incorrectIndexes).toEqual([]);
+  });
+
+  it("reports a partially filled board with no mistakes as incomplete", () => {
+    const givens = parsePuzzleText(SOLVABLE_PUZZLE);
+    const result = checkPuzzle(givens, setCellValue(givens, 2, 4)); // index 2 matches the solution
+
+    expect(result.status).toBe("incomplete");
+    expect(result.incorrectIndexes).toEqual([]);
   });
 });

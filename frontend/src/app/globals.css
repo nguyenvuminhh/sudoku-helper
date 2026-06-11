@@ -251,6 +251,16 @@ h2 {
   background: var(--rose);
 }
 
+.sudoku-cell.check-wrong {
+  background: var(--rose);
+  box-shadow: inset 0 0 0 2px var(--coral);
+  z-index: 1;
+}
+
+.sudoku-cell.check-wrong strong {
+  color: var(--coral);
+}
+
 .sudoku-cell.low-confidence::after {
   background: var(--amber);
   border-radius: 999px;
@@ -594,7 +604,8 @@ h2 {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
-.undo-action {
+.undo-action,
+.check-action {
   justify-content: center;
 }
 

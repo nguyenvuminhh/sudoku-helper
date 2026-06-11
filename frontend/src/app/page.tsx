@@ -11,6 +11,7 @@ import {
   ImageUp,
   Keyboard,
   Lightbulb,
+  ListChecks,
   Loader2,
   Pencil,
   Plus,
@@ -32,6 +33,7 @@ import {
   applyHintEliminationsToNotes,
   applyOcrCells,
   cellToIndex,
+  checkPuzzle,
   collectMatchingDigitHighlights,
   countFilledCells,
   createBoardSnapshot,
@@ -51,6 +53,7 @@ import {
   validateSudokuGrid,
   pushUndoSnapshot,
   type BoardSnapshot,
+  type CheckResult,
   type GivenMask,
   type NotesGrid,
   type SudokuGrid,
@@ -88,6 +91,7 @@ export default function SudokuTutorPage() {
   const [currentHint, setCurrentHint] = useState<HintResponse | null>(null);
   const [history, setHistory] = useState<HintResponse[]>([]);
   const [undoStack, setUndoStack] = useState<BoardSnapshot[]>([]);
+  const [checkResult, setCheckResult] = useState<CheckResult | null>(null);
   const [lowConfidence, setLowConfidence] = useState<number[]>([]);
   const [messages, setMessages] = useState<string[]>([
     "Enter a puzzle on the board or upload a clean Sudoku screenshot."
@@ -110,6 +114,7 @@ export default function SudokuTutorPage() {
   const validation = useMemo(() => validateSudokuGrid(grid), [grid]);
   const statusMessages = validation.valid ? messages : ["Fix the highlighted conflicts before requesting a hint."];
   const conflictIndexes = useMemo(() => collectConflictIndexes(validation.conflicts), [validation]);
+  const incorrectIndexes = useMemo(() => new Set(checkResult?.incorrectIndexes ?? []), [checkResult]);
   const matchingHighlights = useMemo(() => {
     const highlights = collectMatchingDigitHighlights(grid, notes, activeHighlightDigit);
     return {
@@ -180,7 +185,20 @@ export default function SudokuTutorPage() {
     setLowConfidence(restored.snapshot.lowConfidence);
     setUndoStack(restored.stack);
     setCurrentHint(null);
+    setCheckResult(null);
     setMessages(["Undid the last board change."]);
+  }
+
+  function handleCheck() {
+    if (!isSolving) {
+      setMessages(["Start solving before checking the puzzle."]);
+      return;
+    }
+
+    const givens = grid.map((value, index) => (givenMask[index] ? value : null));
+    const result = checkPuzzle(givens, grid);
+    setCheckResult(result);
+    setMessages([checkResultMessage(result)]);
   }
 
   function hasBoardStateChanged(nextGrid: SudokuGrid, nextNotes: NotesGrid, nextLowConfidence = lowConfidence): boolean {
@@ -191,6 +209,7 @@ export default function SudokuTutorPage() {
     setGrid(nextGrid);
     setNotes(nextNotes);
     setCurrentHint(null);
+    setCheckResult(null);
   }
 
   function handleDigit(value: number | null) {
@@ -371,6 +390,7 @@ export default function SudokuTutorPage() {
     setQuickFillDigit(null);
     setCurrentHint(null);
     setUndoStack([]);
+    setCheckResult(null);
     setMessages(["Solving phase started. Loaded cells are locked; use notes and hints to work the puzzle."]);
   }
 
@@ -479,6 +499,7 @@ export default function SudokuTutorPage() {
     setCurrentHint(null);
     setHistory([]);
     setUndoStack([]);
+    setCheckResult(null);
     setMessages(nextMessages);
   }
 
@@ -554,6 +575,7 @@ export default function SudokuTutorPage() {
                 matchingHighlights.valueIndexes.has(index) ? "same-digit-cell" : "",
                 matchingHighlights.noteIndexes.has(index) ? "same-digit-note-cell" : "",
                 conflictIndexes.has(index) ? "conflict" : "",
+                incorrectIndexes.has(index) ? "check-wrong" : "",
                 lowConfidence.includes(index) ? "low-confidence" : "",
                 primaryIndexes.has(index) ? "hint-primary" : "",
                 relatedIndexes.has(index) ? "hint-related" : "",
@@ -748,6 +770,16 @@ export default function SudokuTutorPage() {
                     </button>
                   </div>
                   <button
+                    type="button"
+                    className="check-action"
+                    onClick={handleCheck}
+                    disabled={Boolean(busyLabel) || !validation.valid}
+                    aria-label="Check the puzzle for wrong numbers"
+                  >
+                    <ListChecks size={17} />
+                    Check
+                  </button>
+                  <button
                     className="primary hint-action"
                     type="button"
                     onClick={handleHint}
@@ -924,6 +956,20 @@ function HintPanel({
       ) : null}
     </div>
   );
+}
+
+function checkResultMessage(result: CheckResult): string {
+  if (result.status === "solved") {
+    return "Solved! Every cell matches the solution.";
+  }
+  if (result.status === "incorrect") {
+    const count = result.incorrectIndexes.length;
+    return `Found ${count} wrong number${count === 1 ? "" : "s"}. Highlighted cells do not match the solution.`;
+  }
+  if (result.status === "unsolvable") {
+    return "The locked givens have no valid solution, so the board cannot be checked.";
+  }
+  return "No mistakes so far. Some cells are still empty—keep going.";
 }
 
 function collectConflictIndexes(conflicts: ValidationConflict[]): Set<number> {

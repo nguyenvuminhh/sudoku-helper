@@ -30,6 +30,13 @@ export type ValidationResponse = {
 export type CandidateElimination = { cell: { row: number; col: number }; digit: number };
 export type CandidatePayload = Record<string, number[]>;
 
+export type CheckStatus = "solved" | "incomplete" | "incorrect" | "unsolvable";
+
+export type CheckResult = {
+  status: CheckStatus;
+  incorrectIndexes: number[];
+};
+
 const DIGITS = [1, 2, 3, 4, 5, 6, 7, 8, 9] as const;
 
 export type OcrCell = {
@@ -148,6 +155,37 @@ export function validateSudokuGrid(grid: SudokuGrid): ValidationResponse {
     conflicts,
     candidates: conflicts.length === 0 ? collectCandidates(grid) : {}
   };
+}
+
+export function solveSudoku(grid: SudokuGrid): SudokuGrid | null {
+  if (!validateSudokuGrid(grid).valid) {
+    return null;
+  }
+
+  const cells = grid.map((value) => value ?? 0);
+  return solveCells(cells) ? cells.map((value) => (value === 0 ? null : value)) : null;
+}
+
+export function checkPuzzle(givens: SudokuGrid, grid: SudokuGrid): CheckResult {
+  const solution = solveSudoku(givens);
+  if (!solution) {
+    return { status: "unsolvable", incorrectIndexes: [] };
+  }
+
+  const incorrectIndexes: number[] = [];
+  for (let index = 0; index < 81; index += 1) {
+    const value = grid[index];
+    if (value !== null && value !== solution[index]) {
+      incorrectIndexes.push(index);
+    }
+  }
+
+  if (incorrectIndexes.length > 0) {
+    return { status: "incorrect", incorrectIndexes };
+  }
+
+  const complete = grid.every((value) => value !== null);
+  return { status: complete ? "solved" : "incomplete", incorrectIndexes: [] };
 }
 
 export function quickFillNotes(grid: SudokuGrid): NotesGrid {
@@ -321,6 +359,34 @@ function collectValidationConflicts(grid: SudokuGrid): ValidationConflict[] {
   }
 
   return conflicts;
+}
+
+function solveCells(cells: number[]): boolean {
+  const index = cells.indexOf(0);
+  if (index === -1) {
+    return true;
+  }
+
+  for (const digit of DIGITS) {
+    if (canPlaceDigit(cells, index, digit)) {
+      cells[index] = digit;
+      if (solveCells(cells)) {
+        return true;
+      }
+      cells[index] = 0;
+    }
+  }
+
+  return false;
+}
+
+function canPlaceDigit(cells: number[], index: number, digit: number): boolean {
+  for (const peer of relatedIndexes(index)) {
+    if (peer !== index && cells[peer] === digit) {
+      return false;
+    }
+  }
+  return true;
 }
 
 function collectCandidates(grid: SudokuGrid): Record<string, number[]> {
