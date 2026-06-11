@@ -456,6 +456,29 @@ h2 {
   gap: 10px;
 }
 
+.loading-stack {
+  border: 2px dashed transparent;
+  border-radius: 10px;
+  margin: -6px;
+  padding: 6px;
+  transition:
+    background 140ms ease,
+    border-color 140ms ease;
+}
+
+.loading-stack.dragging {
+  background: var(--mint);
+  border-color: var(--teal);
+}
+
+.upload-hint {
+  color: var(--muted);
+  font-size: 0.82rem;
+  line-height: 1.4;
+  margin: 0;
+  text-align: center;
+}
+
 .puzzle-generator {
   background: #f5f7f2;
   border: 1px solid var(--line);

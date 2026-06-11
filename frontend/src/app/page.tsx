@@ -20,7 +20,7 @@ import {
   Trash2,
   Undo2
 } from "lucide-react";
-import { ChangeEvent, useEffect, useMemo, useRef, useState } from "react";
+import { ChangeEvent, DragEvent, useEffect, useMemo, useRef, useState } from "react";
 
 import {
   requestGeneratedPuzzle,
@@ -103,6 +103,7 @@ export default function SudokuTutorPage() {
   const [editingNotes, setEditingNotes] = useState(false);
   const [quickFillMode, setQuickFillMode] = useState(false);
   const [quickFillDigit, setQuickFillDigit] = useState<number | null>(null);
+  const [isDraggingImage, setIsDraggingImage] = useState(false);
   const [puzzleText, setPuzzleText] = useState("");
   const [generatedLevel, setGeneratedLevel] = useState<GeneratedLevel>("easy");
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -188,6 +189,23 @@ export default function SudokuTutorPage() {
     window.addEventListener("keydown", handleWindowKeyDown);
     return () => window.removeEventListener("keydown", handleWindowKeyDown);
   }, [editingNotes, givenMask, grid, lowConfidence, notes, phase, quickFillDigit, quickFillMode, selectedIndex, undoStack]);
+
+  useEffect(() => {
+    function handleWindowPaste(event: globalThis.ClipboardEvent) {
+      if (phase !== "loading" || busyLabel) {
+        return;
+      }
+
+      const file = firstImageFile(event.clipboardData);
+      if (file) {
+        event.preventDefault();
+        void processImageFile(file);
+      }
+    }
+
+    window.addEventListener("paste", handleWindowPaste);
+    return () => window.removeEventListener("paste", handleWindowPaste);
+  }, [busyLabel, phase]);
 
   function recordUndoSnapshot() {
     setUndoStack((items) => pushUndoSnapshot(items, createBoardSnapshot(grid, notes, selectedIndex, lowConfidence)));
@@ -546,12 +564,7 @@ export default function SudokuTutorPage() {
     return phase === "loading" || !givenMask[index];
   }
 
-  async function handleUpload(event: ChangeEvent<HTMLInputElement>) {
-    const file = event.target.files?.[0];
-    if (!file) {
-      return;
-    }
-
+  async function processImageFile(file: File) {
     setBusyLabel("Reading image");
     try {
       const result = await recognizeImage(file);
@@ -562,7 +575,43 @@ export default function SudokuTutorPage() {
       setMessages([error instanceof Error ? error.message : "Image recognition failed."]);
     } finally {
       setBusyLabel(null);
-      event.target.value = "";
+    }
+  }
+
+  async function handleUpload(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    if (file) {
+      await processImageFile(file);
+    }
+    event.target.value = "";
+  }
+
+  function handleImageDragOver(event: DragEvent<HTMLDivElement>) {
+    if (phase !== "loading" || busyLabel || !Array.from(event.dataTransfer.types).includes("Files")) {
+      return;
+    }
+    event.preventDefault();
+    setIsDraggingImage(true);
+  }
+
+  function handleImageDragLeave(event: DragEvent<HTMLDivElement>) {
+    if (event.currentTarget.contains(event.relatedTarget as Node | null)) {
+      return;
+    }
+    setIsDraggingImage(false);
+  }
+
+  function handleImageDrop(event: DragEvent<HTMLDivElement>) {
+    if (phase !== "loading") {
+      return;
+    }
+    event.preventDefault();
+    setIsDraggingImage(false);
+    const file = firstImageFile(event.dataTransfer);
+    if (file) {
+      void processImageFile(file);
+    } else {
+      setMessages(["Drop a PNG or JPG screenshot of a Sudoku grid."]);
     }
   }
 
@@ -692,7 +741,12 @@ export default function SudokuTutorPage() {
             </div>
             <div className="action-grid">
               {phase === "loading" ? (
-                <div className="loading-stack">
+                <div
+                  className={isDraggingImage ? "loading-stack dragging" : "loading-stack"}
+                  onDragOver={handleImageDragOver}
+                  onDragLeave={handleImageDragLeave}
+                  onDrop={handleImageDrop}
+                >
                   <div className="puzzle-generator">
                     <label htmlFor="generated-level">Generate puzzle</label>
                     <div className="generator-row">
@@ -753,6 +807,9 @@ export default function SudokuTutorPage() {
                       Confirm
                     </button>
                   </div>
+                  <p className="upload-hint">
+                    {isDraggingImage ? "Drop the screenshot to import it." : "Or drag & drop or paste (Ctrl+V) a screenshot here."}
+                  </p>
                 </div>
               ) : (
                 <div className="control-stack" aria-label="Solving controls">
@@ -1060,6 +1117,29 @@ function generatedPuzzleMessage(generated: GeneratedPuzzleResponse): string {
   const rated = generated.level.name;
   const seRating = generated.se_rating ? `, SE ${generated.se_rating.toFixed(1)}` : "";
   return `Generated ${requested} puzzle. Rated ${rated}${seRating} by ${generated.attribution.name}. Review it, then confirm to lock the givens.`;
+}
+
+function firstImageFile(data: DataTransfer | null): File | null {
+  if (!data) {
+    return null;
+  }
+
+  for (const file of Array.from(data.files)) {
+    if (file.type.startsWith("image/")) {
+      return file;
+    }
+  }
+
+  for (const item of Array.from(data.items)) {
+    if (item.kind === "file" && item.type.startsWith("image/")) {
+      const file = item.getAsFile();
+      if (file) {
+        return file;
+      }
+    }
+  }
+
+  return null;
 }
 
 function isEditableTarget(target: EventTarget | null): boolean {
