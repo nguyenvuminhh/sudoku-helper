@@ -85,6 +85,7 @@ export default function SudokuTutorPage() {
               onCellPointerDown={game.beginCellSelection}
               onCellPointerEnter={game.dragCellSelection}
               onCellClick={game.clickCell}
+              onCellContextMenu={game.rightClickCell}
             />
             {game.paused ? (
               <div className="board-overlay" role="status">

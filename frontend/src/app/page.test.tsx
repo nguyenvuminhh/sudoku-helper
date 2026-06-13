@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, render, screen, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -38,6 +38,13 @@ function makePlaceHint(row: number, col: number, digit: number): HintResponse {
     explanation: ["Only one candidate remains in this cell."],
     highlights: { primary_cells: [{ row, col }], related_cells: [], eliminations: [] }
   };
+}
+
+function rightClick(target: HTMLElement): boolean {
+  fireEvent.pointerDown(target, { button: 2 });
+  const wasNotCanceled = fireEvent.contextMenu(target, { button: 2 });
+  fireEvent.pointerUp(target, { button: 2 });
+  return wasNotCanceled;
 }
 
 describe("SudokuTutorPage", () => {
@@ -210,6 +217,24 @@ describe("SudokuTutorPage", () => {
     await user.click(cell(1, 1));
 
     expect(within(cell(1, 1)).getByText("5")).toBeDefined();
+  });
+
+  it("uses right-click for the opposite quick-fill note and fill action", async () => {
+    const user = userEvent.setup();
+    render(<SudokuTutorPage />);
+
+    await loadSampleAndConfirm(user);
+    await user.click(screen.getByRole("button", { name: "5" }));
+
+    expect(rightClick(cell(1, 1))).toBe(false);
+    expect(cell(1, 1).getAttribute("aria-label")).toContain("corner notes 5");
+
+    await user.keyboard("{Tab}");
+    await user.click(cell(1, 2));
+    expect(cell(1, 2).getAttribute("aria-label")).toContain("corner notes 5");
+
+    expect(rightClick(cell(2, 1))).toBe(false);
+    expect(within(cell(2, 1)).getByText("5")).toBeDefined();
   });
 
   it("reports progress when checking a valid board", async () => {

@@ -28,7 +28,8 @@ export function SudokuBoard({
   paused,
   onCellPointerDown,
   onCellPointerEnter,
-  onCellClick
+  onCellClick,
+  onCellContextMenu
 }: {
   grid: SudokuGrid;
   marks: BoardMarks;
@@ -44,6 +45,7 @@ export function SudokuBoard({
   onCellPointerDown: (index: number, additive: boolean) => void;
   onCellPointerEnter: (index: number) => void;
   onCellClick: (index: number, additive: boolean) => void;
+  onCellContextMenu: (index: number) => void;
 }) {
   return (
     <div className={paused ? "sudoku-board paused" : "sudoku-board"} role="grid" aria-label="Sudoku grid">
@@ -93,6 +95,10 @@ export function SudokuBoard({
             onPointerDown={(event) => onCellPointerDown(index, event.ctrlKey || event.metaKey || event.altKey)}
             onPointerEnter={() => onCellPointerEnter(index)}
             onClick={(event) => onCellClick(index, event.ctrlKey || event.metaKey || event.altKey)}
+            onContextMenu={(event) => {
+              event.preventDefault();
+              onCellContextMenu(index);
+            }}
           >
             {value ? (
               <strong>{value}</strong>

@@ -61,6 +61,8 @@ import {
 } from "../lib/sudoku-state";
 import { useSettings } from "./useSettings";
 
+type NoteEntryMode = Extract<EntryMode, "corner" | "center">;
+
 export type SudokuGame = ReturnType<typeof useSudokuGame>;
 
 export function useSudokuGame() {
@@ -81,8 +83,8 @@ export function useSudokuGame() {
   ]);
   const [busyLabel, setBusyLabel] = useState<string | null>(null);
   const [entryMode, setEntryMode] = useState<EntryMode>("value");
-  // Remembers the last marking mode so the Normal/Note toggle can restore it.
-  const [noteType, setNoteType] = useState<Exclude<EntryMode, "value">>("corner");
+  // Remembers the last note mode so the Normal/Note toggle can restore it.
+  const [noteType, setNoteType] = useState<NoteEntryMode>("corner");
   const [quickFillMode, setQuickFillMode] = useState(false);
   const [quickFillDigit, setQuickFillDigit] = useState<number | null>(null);
   const [puzzleText, setPuzzleText] = useState("");
@@ -451,6 +453,25 @@ export function useSudokuGame() {
     placeQuickFillAt(index);
   }
 
+  function rightClickCell(index: number) {
+    if (paused) {
+      return;
+    }
+    if (!quickFillMode || quickFillDigit === null) {
+      return;
+    }
+
+    const targetIndexes = selectedIndexes.length > 1 && selectedIndexes.includes(index) ? selectedIndexes : [index];
+    if (entryMode === "value") {
+      toggleNoteOnIndexes(targetIndexes, quickFillDigit, noteType);
+      return;
+    }
+
+    if (isNoteEntryMode(entryMode)) {
+      applyValueToCells(targetIndexes, quickFillDigit, false);
+    }
+  }
+
   function placeQuickFillAt(index: number) {
     if (quickFillDigit === null) {
       return;
@@ -503,13 +524,16 @@ export function useSudokuGame() {
   }
 
   function toggleNoteOnSelection(digit: number) {
+    toggleNoteOnIndexes(selectedIndexes, digit, isNoteEntryMode(entryMode) ? entryMode : noteType);
+  }
+
+  function toggleNoteOnIndexes(indexes: number[], digit: number, layer: NoteEntryMode) {
     if (!isSolving) {
       setMessages(["Start solving before editing notes."]);
       return;
     }
-    const layer = entryMode === "corner" ? "corner" : "center";
     const otherLayer = layer === "corner" ? "center" : "corner";
-    const emptyTargets = selectedIndexes.filter((index) => grid[index] === null);
+    const emptyTargets = indexes.filter((index) => grid[index] === null);
     if (emptyTargets.length === 0) {
       setMessages(["Notes can only be edited on empty cells."]);
       return;
@@ -711,7 +735,9 @@ export function useSudokuGame() {
 
     setEntryMode(mode);
     if (mode !== "value") {
-      setNoteType(mode);
+      if (isNoteEntryMode(mode)) {
+        setNoteType(mode);
+      }
     }
     setMessages([entryModeMessage(mode)]);
   }
@@ -897,6 +923,7 @@ export function useSudokuGame() {
     // actions
     pressDigit,
     clickCell,
+    rightClickCell,
     beginCellSelection,
     dragCellSelection,
     clearSelection,
@@ -937,4 +964,8 @@ function entryModeMessage(mode: EntryMode): string {
     return "Color mode: digits paint the selected cells. Press again to clear.";
   }
   return "Normal mode: digits fill the selected cells.";
+}
+
+function isNoteEntryMode(mode: EntryMode): mode is NoteEntryMode {
+  return mode === "corner" || mode === "center";
 }
