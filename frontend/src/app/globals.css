@@ -16,8 +16,7 @@
   --shadow: 0 18px 50px rgba(25, 33, 38, 0.12);
 
   /* Semantic surfaces + board highlights (overridden in dark mode). */
-  --grid-line: var(--line-strong);
-  --cell-line: #bcc5c7;
+  --cell-line: #909c9e;
   --panel-bg: rgba(255, 255, 255, 0.9);
   --card-bg: #f5f7f2;
   --field-bg: #fffef8;
@@ -27,7 +26,7 @@
 
   --cell-bg: #fffef8;
   --cell-text: #1b1f24;
-  --cell-given-bg: #eef1ec;
+  --cell-user-text: #2563b0;
   --cell-given-text: #0f1720;
   --note-text: #2e3b43;
   --peer-bg: #eaf3f1;
@@ -47,8 +46,7 @@
 
   --same-bg: #9bdccd;
   --same-text: #064640;
-  --same-ring: rgba(12, 143, 147, 0.55);
-  --same-note-bg: #e6f7f1;
+  --same-user-text: #143a86;
 
   --conflict-bg: var(--rose);
   --hint-primary-bg: #ffe066;
@@ -75,8 +73,7 @@
   --rose: #3c2521;
   --shadow: 0 18px 50px rgba(0, 0, 0, 0.55);
 
-  --grid-line: #000000;
-  --cell-line: #313e48;
+  --cell-line: #4d5c66;
   --panel-bg: rgba(27, 35, 43, 0.92);
   --card-bg: #151c23;
   --field-bg: #131a20;
@@ -86,7 +83,7 @@
 
   --cell-bg: #1d262e;
   --cell-text: #e7ecf1;
-  --cell-given-bg: #141b21;
+  --cell-user-text: #7cb1f4;
   --cell-given-text: #aab6c0;
   --note-text: #aeb9c2;
   --peer-bg: #232f39;
@@ -106,8 +103,7 @@
 
   --same-bg: #0e635a;
   --same-text: #d6fff8;
-  --same-ring: rgba(64, 224, 208, 0.7);
-  --same-note-bg: #173b37;
+  --same-user-text: #9fd0ff;
 
   --conflict-bg: #4a2a24;
   --hint-primary-bg: #6f6019;
@@ -286,7 +282,7 @@ h3 {
 .sudoku-board {
   aspect-ratio: 1;
   background: var(--cell-bg);
-  border: 2px solid var(--grid-line);
+  border: 3px solid var(--cell-line);
   display: grid;
   grid-template-columns: repeat(9, minmax(0, 1fr));
   grid-template-rows: repeat(9, minmax(0, 1fr));
@@ -331,7 +327,7 @@ h3 {
 
 /* Thick separators between the 3x3 boxes. */
 .sudoku-cell:nth-child(3n):not(:nth-child(9n)) {
-  border-right: 2px solid var(--grid-line);
+  border-right: 3px solid var(--cell-line);
 }
 
 .sudoku-cell:nth-child(9n) {
@@ -344,12 +340,13 @@ h3 {
 
 .sudoku-cell:nth-child(n + 19):nth-child(-n + 27),
 .sudoku-cell:nth-child(n + 46):nth-child(-n + 54) {
-  border-bottom: 2px solid var(--grid-line);
+  border-bottom: 3px solid var(--cell-line);
 }
 
 .sudoku-cell strong {
   animation: cell-pop 160ms ease;
-  color: var(--cell-text);
+  /* User-entered digits get an accent color; givens stay ink (see below). */
+  color: var(--cell-user-text);
   font-family: var(--font-sans), "Segoe UI", system-ui, sans-serif;
   font-size: 2rem;
   font-weight: 600;
@@ -380,10 +377,8 @@ h3 {
   grid-area: 1 / 1;
 }
 
-.sudoku-cell.locked-given {
-  background: var(--cell-given-bg);
-}
-
+/* Givens share the same cell background as user entries; only the font color
+   sets them apart. */
 .sudoku-cell.locked-given strong {
   color: var(--cell-given-text);
 }
@@ -460,27 +455,18 @@ h3 {
 
 .sudoku-cell.same-digit-cell {
   background: var(--same-bg);
-  box-shadow: inset 0 0 0 2px var(--same-ring);
-  z-index: 1;
 }
 
+/* Highlighted matching values keep the given/user font-color split: givens use
+   the ink-toned same-text, user entries a distinct accent. */
 .sudoku-cell.same-digit-cell strong {
-  color: var(--same-text);
+  color: var(--same-user-text);
   font-weight: 800;
   transform: scale(1.08);
 }
 
-.sudoku-cell.same-digit-note-cell:not(.same-digit-cell) {
-  background: var(--same-note-bg);
-}
-
-.sudoku-cell.same-digit-note-cell {
-  box-shadow: inset 0 0 0 2px var(--same-ring);
-}
-
-.sudoku-cell.same-digit-cell.selected,
-.sudoku-cell.same-digit-note-cell.selected {
-  box-shadow: inset 0 0 0 3px var(--select-ring);
+.sudoku-cell.same-digit-cell.locked-given strong {
+  color: var(--same-text);
 }
 
 .hint-preview-value {
@@ -557,15 +543,21 @@ h3 {
   }
 }
 
+/* Matching notes get a small square highlight that wraps the digit with a
+   little padding — same fill as the matching-cell highlight, no glow. */
 .corner-marks span.same-digit-note,
 .center-marks span.same-digit-note {
-  background: var(--teal);
-  border-radius: 999px;
-  color: #ffffff;
-  font-weight: 800;
-  min-width: 1.25em;
-  padding: 0.08em;
-  text-align: center;
+  background: var(--same-bg);
+  border-radius: 2px;
+  color: var(--same-text);
+  padding: 3px 4px;
+}
+
+/* Corner notes stretch to fill their grid slot by default; shrink the
+   highlighted one to the digit so the box wraps it tightly. */
+.corner-marks span.same-digit-note {
+  align-self: center;
+  justify-self: center;
 }
 
 .keypad {
@@ -841,9 +833,72 @@ h3 {
   font-weight: 900;
 }
 
-.control-stack {
+/* Compact icon controls, laid out in two rows: Undo/Redo/Note/Quick fill, then
+   the marking + action buttons. Toggles advertise their on state through a
+   filled background and accent border. */
+.control-rows {
   display: grid;
-  gap: 10px;
+  gap: 6px;
+}
+
+.control-toggles {
+  display: grid;
+  gap: 6px;
+}
+
+.control-toggles-primary {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.control-toggles-secondary {
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+}
+
+.action-grid .control-toggles .control-toggle {
+  align-items: center;
+  background: var(--field-bg);
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  color: var(--muted);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  justify-content: center;
+  min-height: 52px;
+  min-width: 0;
+  padding: 0.4rem 0.2rem;
+  transform: none;
+  width: 100%;
+}
+
+.action-grid .control-toggles .control-toggle:hover:not(:disabled) {
+  border-color: var(--teal);
+  box-shadow: none;
+  color: var(--ink);
+  transform: none;
+}
+
+.control-toggle-label {
+  font-size: 0.64rem;
+  font-weight: 700;
+  line-height: 1;
+  text-align: center;
+}
+
+/* Active toggle: accent fill + border so the state reads at a glance. */
+.action-grid .control-toggles .control-toggle.active {
+  background: var(--mint);
+  border-color: var(--teal);
+  box-shadow: inset 0 0 0 1px var(--teal);
+  color: var(--teal-deep);
+}
+
+/* Hint stays the standing call-to-action. */
+.action-grid .control-toggles .control-toggle.primary,
+.action-grid .control-toggles .control-toggle.primary:hover:not(:disabled) {
+  background: var(--teal);
+  border-color: var(--teal);
+  color: #ffffff;
 }
 
 .switch-row {
@@ -898,51 +953,6 @@ h3 {
 
 .switch-row.active .switch-thumb {
   transform: translateX(20px);
-}
-
-.note-action-row {
-  display: grid;
-  gap: 8px;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-}
-
-.undo-action,
-.redo-action,
-.check-action {
-  justify-content: center;
-}
-
-/* Segmented entry-mode control: Normal, Corner, Center, Color. */
-.mode-switcher {
-  background: var(--track-bg);
-  border: 1px solid var(--track-border);
-  border-radius: 10px;
-  display: grid;
-  gap: 4px;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  padding: 4px;
-}
-
-.action-grid .mode-switcher .mode-option {
-  background: transparent;
-  border: 0;
-  border-radius: 7px;
-  box-shadow: none;
-  display: inline-flex;
-  flex-direction: column;
-  font-size: 0.7rem;
-  font-weight: 700;
-  gap: 4px;
-  justify-content: center;
-  min-height: 48px;
-  padding: 0.35rem 0.15rem;
-  transform: none;
-}
-
-.action-grid .mode-switcher .mode-option.active {
-  background: var(--panel);
-  box-shadow: 0 2px 8px rgba(17, 24, 39, 0.14);
-  color: var(--teal-deep);
 }
 
 .settings-list {
@@ -1075,11 +1085,6 @@ h3 {
   display: grid;
   gap: 8px;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-}
-
-.note-action-row button,
-.action-grid .hint-action {
-  justify-content: center;
 }
 
 .phase-card {
@@ -1483,6 +1488,21 @@ kbd {
 }
 
 @media (max-width: 620px) {
+  /* Trim the chrome so the square board can stretch close to the screen edge. */
+  .workspace {
+    padding: 8px;
+  }
+
+  .board-zone {
+    padding: 10px;
+  }
+
+  .sudoku-board,
+  .board-wrap,
+  .keypad {
+    max-width: 100%;
+  }
+
   .action-grid {
     grid-template-columns: 1fr;
   }
@@ -1495,28 +1515,6 @@ kbd {
   .keypad button {
     min-height: 36px;
     padding: 0.42rem 0;
-  }
-
-  .control-stack {
-    grid-auto-flow: column;
-    grid-auto-columns: max-content;
-    overflow-x: auto;
-    padding-bottom: 2px;
-    -webkit-overflow-scrolling: touch;
-  }
-
-  .control-stack > button,
-  .control-stack .note-action-row button {
-    min-width: max-content;
-    width: auto;
-  }
-
-  .control-stack .switch-row {
-    gap: 0.55rem;
-  }
-
-  .note-action-row {
-    display: contents;
   }
 
   .sudoku-cell strong {

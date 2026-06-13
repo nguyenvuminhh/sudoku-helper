@@ -11,7 +11,6 @@ export type BoardHighlights = {
   relatedIndexes: Set<number>;
   eliminationIndexes: Set<number>;
   matchingValueIndexes: Set<number>;
-  matchingNoteIndexes: Set<number>;
   peerIndexes: Set<number>;
 };
 
@@ -65,7 +64,6 @@ export function SudokuBoard({
           selectedIndex === index ? "selected" : "",
           isGiven ? "locked-given" : "",
           highlights.matchingValueIndexes.has(index) ? "same-digit-cell" : "",
-          highlights.matchingNoteIndexes.has(index) ? "same-digit-note-cell" : "",
           highlights.conflictIndexes.has(index) ? "conflict" : "",
           highlights.incorrectIndexes.has(index) ? "check-wrong" : "",
           lowConfidence.includes(index) ? "low-confidence" : "",

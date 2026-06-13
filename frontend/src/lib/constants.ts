@@ -13,13 +13,6 @@ export type TutorPhase = "loading" | "solving";
 export type GeneratedLevel = "easy" | "medium" | "hard" | "expert" | "master";
 export type EntryMode = "value" | "corner" | "center" | "color";
 
-export const ENTRY_MODES: Array<{ id: EntryMode; label: string }> = [
-  { id: "value", label: "Normal" },
-  { id: "corner", label: "Corner" },
-  { id: "center", label: "Center" },
-  { id: "color", label: "Color" }
-];
-
 /** Accessible names for the 9 cell paint colors, indexed 1-9. */
 export const PAINT_COLOR_NAMES = [
   "",

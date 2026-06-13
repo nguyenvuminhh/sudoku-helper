@@ -66,7 +66,7 @@ describe("SudokuTutorPage", () => {
 
     expect(within(cell(1, 1)).getByText("5")).toBeDefined();
     // Selection advanced to the next empty cell (R1C2 on an empty board).
-    expect(screen.getByRole("heading", { name: "R1C2" })).toBeDefined();
+    expect(cell(1, 2).className).toContain("selected");
   });
 
   it("loads the sample puzzle and locks givens after confirming", async () => {
@@ -78,7 +78,7 @@ describe("SudokuTutorPage", () => {
     expect(screen.getByText(/solving phase started/i)).toBeDefined();
     // R1C4 holds the sample given 6 and is announced as a loaded clue.
     expect(cell(1, 4).getAttribute("aria-label")).toContain("loaded clue");
-    expect(screen.getByRole("switch", { name: /^quick fill$/i }).getAttribute("aria-checked")).toBe("true");
+    expect(screen.getByRole("button", { name: /^quick fill$/i }).getAttribute("aria-pressed")).toBe("true");
   });
 
   it("adds corner notes in corner mode", async () => {
@@ -87,8 +87,8 @@ describe("SudokuTutorPage", () => {
 
     await loadSampleAndConfirm(user);
     // Turn quick fill off so digit presses become notes, then pick the mode.
-    await user.click(screen.getByRole("switch", { name: /^quick fill$/i }));
-    await user.click(screen.getByRole("radio", { name: /corner/i }));
+    await user.click(screen.getByRole("button", { name: /^quick fill$/i }));
+    await user.click(screen.getByRole("button", { name: /^corner$/i }));
     await user.click(cell(1, 1));
     await user.click(screen.getByRole("button", { name: "5" }));
 
@@ -100,8 +100,8 @@ describe("SudokuTutorPage", () => {
     render(<SudokuTutorPage />);
 
     await loadSampleAndConfirm(user);
-    await user.click(screen.getByRole("switch", { name: /^quick fill$/i }));
-    await user.click(screen.getByRole("radio", { name: /center/i }));
+    await user.click(screen.getByRole("button", { name: /^quick fill$/i }));
+    await user.click(screen.getByRole("button", { name: /^center$/i }));
     await user.click(cell(1, 1));
     await user.click(screen.getByRole("button", { name: "5" }));
     await user.click(screen.getByRole("button", { name: "7" }));
@@ -114,8 +114,8 @@ describe("SudokuTutorPage", () => {
     render(<SudokuTutorPage />);
 
     await loadSampleAndConfirm(user);
-    await user.click(screen.getByRole("switch", { name: /^quick fill$/i }));
-    await user.click(screen.getByRole("radio", { name: /color/i }));
+    await user.click(screen.getByRole("button", { name: /^quick fill$/i }));
+    await user.click(screen.getByRole("button", { name: /^color$/i }));
     await user.click(cell(1, 1));
     await user.click(screen.getByRole("button", { name: /paint green/i }));
 
@@ -126,12 +126,26 @@ describe("SudokuTutorPage", () => {
     expect(cell(1, 1).getAttribute("aria-label")).not.toContain("green highlight");
   });
 
+  it("erases a cell color with the eraser in color mode under quick fill", async () => {
+    const user = userEvent.setup();
+    render(<SudokuTutorPage />);
+
+    await loadSampleAndConfirm(user); // quick fill stays on by default
+    await user.click(screen.getByRole("button", { name: /^color$/i }));
+    await user.click(screen.getByRole("button", { name: /paint green/i })); // lock the color
+    await user.click(cell(1, 1)); // paint it via quick fill
+    expect(cell(1, 1).getAttribute("aria-label")).toContain("green highlight");
+
+    await user.click(screen.getByRole("button", { name: /erase cell/i }));
+    expect(cell(1, 1).getAttribute("aria-label")).not.toContain("green highlight");
+  });
+
   it("applies a digit to every cell of an alt-click multi-selection", async () => {
     const user = userEvent.setup();
     render(<SudokuTutorPage />);
 
     await loadSampleAndConfirm(user);
-    await user.click(screen.getByRole("switch", { name: /^quick fill$/i }));
+    await user.click(screen.getByRole("button", { name: /^quick fill$/i }));
 
     await user.click(cell(1, 1));
     await user.keyboard("[AltLeft>]");
@@ -141,6 +155,38 @@ describe("SudokuTutorPage", () => {
 
     expect(within(cell(1, 1)).getByText("5")).toBeDefined();
     expect(within(cell(2, 1)).getByText("5")).toBeDefined();
+  });
+
+  it("marks every cell of a kept multi-selection on a single click", async () => {
+    const user = userEvent.setup();
+    render(<SudokuTutorPage />);
+
+    await loadSampleAndConfirm(user);
+    // Corner-note mode; quick fill stays on by default after confirming.
+    await user.click(screen.getByRole("button", { name: /^corner$/i }));
+
+    // Build the group with Alt-click, lock the digit, then a plain click inside
+    // the group marks all of it at once.
+    await user.click(cell(1, 1));
+    await user.keyboard("[AltLeft>]");
+    await user.click(cell(1, 2));
+    await user.keyboard("[/AltLeft]");
+    await user.click(screen.getByRole("button", { name: "5" }));
+    await user.click(cell(1, 1));
+
+    expect(cell(1, 1).getAttribute("aria-label")).toContain("corner notes 5");
+    expect(cell(1, 2).getAttribute("aria-label")).toContain("corner notes 5");
+  });
+
+  it("clears the cell selection when clicking outside the board", async () => {
+    const user = userEvent.setup();
+    render(<SudokuTutorPage />);
+
+    await user.click(cell(2, 3));
+    expect(cell(2, 3).className).toContain("selected");
+
+    await user.click(document.body);
+    expect(cell(2, 3).className).not.toContain("selected");
   });
 
   it("shows remaining digit counts and hides them via settings", async () => {
