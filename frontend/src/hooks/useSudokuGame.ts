@@ -100,6 +100,10 @@ export function useSudokuGame() {
 
   const draggingRef = useRef(false);
   const dragMovedRef = useRef(false);
+  const rightPointerModeRef = useRef<"note" | "inactive" | null>(null);
+  const rightPointerStartIndexRef = useRef<number | null>(null);
+  const rightPointerMovedRef = useRef(false);
+  const rightPointerVisitedRef = useRef<Set<number>>(new Set());
 
   const filledCount = countFilledCells(grid);
   const digitCounts = useMemo(() => {
@@ -233,6 +237,9 @@ export function useSudokuGame() {
   useEffect(() => {
     function handlePointerUp() {
       draggingRef.current = false;
+      rightPointerModeRef.current = null;
+      rightPointerStartIndexRef.current = null;
+      rightPointerVisitedRef.current = new Set();
     }
     window.addEventListener("pointerup", handlePointerUp);
     return () => window.removeEventListener("pointerup", handlePointerUp);
@@ -250,12 +257,30 @@ export function useSudokuGame() {
     setSelectedIndexes([]);
   }
 
-  function beginCellSelection(index: number, additive: boolean) {
+  function beginCellSelection(index: number, additive: boolean, button = 0) {
     if (paused) {
       return;
     }
+    if (button === 2) {
+      draggingRef.current = false;
+      dragMovedRef.current = false;
+      rightPointerModeRef.current = quickFillMode && quickFillDigit !== null && entryMode === "value" ? "note" : "inactive";
+      rightPointerStartIndexRef.current = index;
+      rightPointerMovedRef.current = false;
+      rightPointerVisitedRef.current = new Set();
+      selectCellFromPointerDown(index, additive);
+      return;
+    }
+
+    rightPointerModeRef.current = null;
+    rightPointerStartIndexRef.current = null;
+    rightPointerVisitedRef.current = new Set();
     draggingRef.current = true;
     dragMovedRef.current = false;
+    selectCellFromPointerDown(index, additive);
+  }
+
+  function selectCellFromPointerDown(index: number, additive: boolean) {
     setSelectedIndex(index);
     if (additive) {
       setSelectedIndexes((current) => {
@@ -276,7 +301,28 @@ export function useSudokuGame() {
   }
 
   function dragCellSelection(index: number) {
-    if (paused || !draggingRef.current) {
+    if (paused) {
+      return;
+    }
+    if (rightPointerModeRef.current !== null) {
+      rightPointerMovedRef.current = true;
+      if (rightPointerModeRef.current === "note" && quickFillDigit !== null) {
+        const startIndex = rightPointerStartIndexRef.current;
+        const indexes = [startIndex, index].filter((item): item is number => item !== null);
+        const freshIndexes = indexes.filter((item) => {
+          if (rightPointerVisitedRef.current.has(item)) {
+            return false;
+          }
+          rightPointerVisitedRef.current.add(item);
+          return true;
+        });
+        if (freshIndexes.length > 0) {
+          addNoteToIndexes(freshIndexes, quickFillDigit, noteType);
+        }
+      }
+      return;
+    }
+    if (!draggingRef.current) {
       return;
     }
     dragMovedRef.current = true;
@@ -457,6 +503,10 @@ export function useSudokuGame() {
     if (paused) {
       return;
     }
+    if (rightPointerMovedRef.current) {
+      rightPointerMovedRef.current = false;
+      return;
+    }
     if (!quickFillMode || quickFillDigit === null) {
       return;
     }
@@ -550,6 +600,30 @@ export function useSudokuGame() {
       [layer]: toggleNoteOnCells(marks[layer], grid, emptyTargets, digit),
       [otherLayer]: nextOther
     });
+  }
+
+  function addNoteToIndexes(indexes: number[], digit: number, layer: NoteEntryMode) {
+    if (!isSolving) {
+      setMessages(["Start solving before editing notes."]);
+      return;
+    }
+    const emptyTargets = indexes.filter((index) => grid[index] === null);
+    if (emptyTargets.length === 0) {
+      return;
+    }
+
+    const targetSet = new Set(emptyTargets);
+    const otherLayer = layer === "corner" ? "center" : "corner";
+    const nextLayer = marks[layer].map((cellNotes, index) => {
+      if (!targetSet.has(index) || cellNotes.includes(digit)) {
+        return cellNotes;
+      }
+      return [...cellNotes, digit].sort((left, right) => left - right);
+    });
+    const nextOther = marks[otherLayer].map((cellNotes, index) =>
+      targetSet.has(index) ? cellNotes.filter((note) => note !== digit) : cellNotes
+    );
+    commitMarks({ ...marks, [layer]: nextLayer, [otherLayer]: nextOther });
   }
 
   function applyColorToSelection(color: number | null) {

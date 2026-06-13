@@ -42,7 +42,7 @@ export function SudokuBoard({
   hintPreview: HintPreview | null;
   highlights: BoardHighlights;
   paused: boolean;
-  onCellPointerDown: (index: number, additive: boolean) => void;
+  onCellPointerDown: (index: number, additive: boolean, button: number) => void;
   onCellPointerEnter: (index: number) => void;
   onCellClick: (index: number, additive: boolean) => void;
   onCellContextMenu: (index: number) => void;
@@ -92,7 +92,7 @@ export function SudokuBoard({
             type="button"
             role="gridcell"
             aria-label={`Row ${row + 1}, column ${col + 1}${ariaValue}`}
-            onPointerDown={(event) => onCellPointerDown(index, event.ctrlKey || event.metaKey || event.altKey)}
+            onPointerDown={(event) => onCellPointerDown(index, event.ctrlKey || event.metaKey || event.altKey, event.button)}
             onPointerEnter={() => onCellPointerEnter(index)}
             onClick={(event) => onCellClick(index, event.ctrlKey || event.metaKey || event.altKey)}
             onContextMenu={(event) => {

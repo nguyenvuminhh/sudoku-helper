@@ -47,6 +47,17 @@ function rightClick(target: HTMLElement): boolean {
   return wasNotCanceled;
 }
 
+function rightDrag(targets: HTMLElement[]): boolean {
+  const [firstTarget, ...enteredTargets] = targets;
+  fireEvent.pointerDown(firstTarget, { button: 2, buttons: 2 });
+  for (const target of enteredTargets) {
+    fireEvent.pointerEnter(target, { button: 2, buttons: 2 });
+  }
+  const wasNotCanceled = fireEvent.contextMenu(targets[targets.length - 1], { button: 2, buttons: 2 });
+  fireEvent.pointerUp(targets[targets.length - 1], { button: 2, buttons: 0 });
+  return wasNotCanceled;
+}
+
 describe("SudokuTutorPage", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -235,6 +246,25 @@ describe("SudokuTutorPage", () => {
 
     expect(rightClick(cell(2, 1))).toBe(false);
     expect(within(cell(2, 1)).getByText("5")).toBeDefined();
+  });
+
+  it("right-click drags notes only when right-click is the note action", async () => {
+    const user = userEvent.setup();
+    render(<SudokuTutorPage />);
+
+    await loadSampleAndConfirm(user);
+    await user.click(screen.getByRole("button", { name: "5" }));
+
+    expect(rightDrag([cell(1, 1), cell(1, 2), cell(2, 1)])).toBe(false);
+    expect(cell(1, 1).getAttribute("aria-label")).toContain("corner notes 5");
+    expect(cell(1, 2).getAttribute("aria-label")).toContain("corner notes 5");
+    expect(cell(2, 1).getAttribute("aria-label")).toContain("corner notes 5");
+
+    await user.keyboard("{Tab}");
+
+    expect(rightDrag([cell(1, 3), cell(2, 2)])).toBe(false);
+    expect(within(cell(1, 3)).queryByText("5")).toBeNull();
+    expect(within(cell(2, 2)).queryByText("5")).toBeNull();
   });
 
   it("reports progress when checking a valid board", async () => {
