@@ -109,6 +109,20 @@ export function useSudokuGame() {
   const rightPointerMovedRef = useRef(false);
   const rightPointerVisitedRef = useRef<Set<number>>(new Set());
 
+  // Live mirrors of the board state. Two pointer/click handlers can run in the
+  // same tick before React re-renders (notably on touch, where the click-delay
+  // can fire both taps' clicks back-to-back); reading and writing these refs at
+  // commit time lets the second edit build on the first instead of clobbering it
+  // with a stale closure copy.
+  const gridRef = useRef(grid);
+  const marksRef = useRef(marks);
+  const lowConfidenceRef = useRef(lowConfidence);
+  const selectedIndexRef = useRef(selectedIndex);
+  gridRef.current = grid;
+  marksRef.current = marks;
+  lowConfidenceRef.current = lowConfidence;
+  selectedIndexRef.current = selectedIndex;
+
   const filledCount = countFilledCells(grid);
   const digitCounts = useMemo(() => {
     const counts = new Array(10).fill(0);
@@ -270,6 +284,7 @@ export function useSudokuGame() {
   }, []);
 
   function selectOnly(index: number) {
+    selectedIndexRef.current = index;
     setSelectedIndex(index);
     setSelectedIndexes([index]);
   }
@@ -359,11 +374,16 @@ export function useSudokuGame() {
   }
 
   function recordUndoSnapshot() {
-    setUndoStack((items) => pushUndoSnapshot(items, createBoardSnapshot(grid, marks, selectedIndex, lowConfidence)));
+    setUndoStack((items) =>
+      pushUndoSnapshot(items, createBoardSnapshot(gridRef.current, marksRef.current, selectedIndexRef.current, lowConfidenceRef.current))
+    );
     setRedoStack([]);
   }
 
   function restoreSnapshot(snapshot: BoardSnapshot) {
+    gridRef.current = snapshot.grid;
+    marksRef.current = snapshot.marks;
+    lowConfidenceRef.current = snapshot.lowConfidence;
     setGrid(snapshot.grid);
     setMarks(snapshot.marks);
     selectOnly(snapshot.selectedIndex);
@@ -378,7 +398,9 @@ export function useSudokuGame() {
       return;
     }
 
-    setRedoStack((items) => pushUndoSnapshot(items, createBoardSnapshot(grid, marks, selectedIndex, lowConfidence)));
+    setRedoStack((items) =>
+      pushUndoSnapshot(items, createBoardSnapshot(gridRef.current, marksRef.current, selectedIndexRef.current, lowConfidenceRef.current))
+    );
     restoreSnapshot(restored.snapshot);
     setUndoStack(restored.stack);
     setMessages(["Undid the last board change."]);
@@ -390,7 +412,9 @@ export function useSudokuGame() {
       return;
     }
 
-    setUndoStack((items) => pushUndoSnapshot(items, createBoardSnapshot(grid, marks, selectedIndex, lowConfidence)));
+    setUndoStack((items) =>
+      pushUndoSnapshot(items, createBoardSnapshot(gridRef.current, marksRef.current, selectedIndexRef.current, lowConfidenceRef.current))
+    );
     restoreSnapshot(restored.snapshot);
     setRedoStack(restored.stack);
     setMessages(["Redid the last undone change."]);
@@ -427,11 +451,17 @@ export function useSudokuGame() {
     );
   }
 
-  function hasBoardStateChanged(nextGrid: SudokuGrid, nextMarks: BoardMarks, nextLowConfidence = lowConfidence): boolean {
-    return !gridsEqual(grid, nextGrid) || !marksEqual(marks, nextMarks) || !numberListsEqual(lowConfidence, nextLowConfidence);
+  function hasBoardStateChanged(nextGrid: SudokuGrid, nextMarks: BoardMarks, nextLowConfidence = lowConfidenceRef.current): boolean {
+    return (
+      !gridsEqual(gridRef.current, nextGrid) ||
+      !marksEqual(marksRef.current, nextMarks) ||
+      !numberListsEqual(lowConfidenceRef.current, nextLowConfidence)
+    );
   }
 
-  function updateGrid(nextGrid: SudokuGrid, nextMarks = marks) {
+  function updateGrid(nextGrid: SudokuGrid, nextMarks = marksRef.current) {
+    gridRef.current = nextGrid;
+    marksRef.current = nextMarks;
     setGrid(nextGrid);
     setMarks(nextMarks);
     setCurrentHint(null);
@@ -440,9 +470,10 @@ export function useSudokuGame() {
 
   /** Records an undo snapshot and applies a marks-only change. */
   function commitMarks(nextMarks: BoardMarks) {
-    if (hasBoardStateChanged(grid, nextMarks)) {
+    if (hasBoardStateChanged(gridRef.current, nextMarks)) {
       recordUndoSnapshot();
     }
+    marksRef.current = nextMarks;
     setMarks(nextMarks);
     setCurrentHint(null);
   }
@@ -556,16 +587,18 @@ export function useSudokuGame() {
     }
 
     if (entryMode === "corner" || entryMode === "center") {
-      if (grid[index] !== null) {
+      if (gridRef.current[index] !== null) {
         setMessages(["Notes can only be edited on empty cells."]);
         return;
       }
-      commitMarks({ ...marks, [entryMode]: toggleCellNote(marks[entryMode], grid, index, quickFillDigit) });
+      const liveMarks = marksRef.current;
+      commitMarks({ ...liveMarks, [entryMode]: toggleCellNote(liveMarks[entryMode], gridRef.current, index, quickFillDigit) });
       return;
     }
 
     if (entryMode === "color") {
-      commitMarks({ ...marks, colors: toggleColorOnCells(marks.colors, [index], quickFillDigit) });
+      const liveMarks = marksRef.current;
+      commitMarks({ ...liveMarks, colors: toggleColorOnCells(liveMarks.colors, [index], quickFillDigit) });
       return;
     }
 
@@ -586,7 +619,7 @@ export function useSudokuGame() {
       return;
     }
 
-    const targets = selectedIndexes.filter((index) => grid[index] !== quickFillDigit);
+    const targets = selectedIndexes.filter((index) => gridRef.current[index] !== quickFillDigit);
     if (targets.length > 0) {
       applyValueToCells(targets, quickFillDigit, false);
       return;
@@ -594,7 +627,7 @@ export function useSudokuGame() {
     // Nothing to fill: keep the old behavior of cycling to the next cell that
     // already holds the locked digit.
     if (selectedIndexes.length === 1) {
-      const matchingCell = findNextCellWithValue(grid, quickFillDigit, selectedIndex);
+      const matchingCell = findNextCellWithValue(gridRef.current, quickFillDigit, selectedIndexRef.current);
       if (matchingCell !== null) {
         selectOnly(matchingCell);
       }
@@ -610,8 +643,10 @@ export function useSudokuGame() {
       setMessages(["Start solving before editing notes."]);
       return;
     }
+    const liveGrid = gridRef.current;
+    const liveMarks = marksRef.current;
     const otherLayer = layer === "corner" ? "center" : "corner";
-    const emptyTargets = indexes.filter((index) => grid[index] === null);
+    const emptyTargets = indexes.filter((index) => liveGrid[index] === null);
     if (emptyTargets.length === 0) {
       setMessages(["Notes can only be edited on empty cells."]);
       return;
@@ -620,12 +655,12 @@ export function useSudokuGame() {
     // A digit lives in either the corner or the center layer, never both: drop
     // it from the opposite layer on the cells we just touched.
     const targetSet = new Set(emptyTargets);
-    const nextOther = marks[otherLayer].map((cellNotes, index) =>
+    const nextOther = liveMarks[otherLayer].map((cellNotes, index) =>
       targetSet.has(index) ? cellNotes.filter((note) => note !== digit) : cellNotes
     );
     commitMarks({
-      ...marks,
-      [layer]: toggleNoteOnCells(marks[layer], grid, emptyTargets, digit),
+      ...liveMarks,
+      [layer]: toggleNoteOnCells(liveMarks[layer], liveGrid, emptyTargets, digit),
       [otherLayer]: nextOther
     });
   }
@@ -635,23 +670,25 @@ export function useSudokuGame() {
       setMessages(["Start solving before editing notes."]);
       return;
     }
-    const emptyTargets = indexes.filter((index) => grid[index] === null);
+    const liveGrid = gridRef.current;
+    const liveMarks = marksRef.current;
+    const emptyTargets = indexes.filter((index) => liveGrid[index] === null);
     if (emptyTargets.length === 0) {
       return;
     }
 
     const targetSet = new Set(emptyTargets);
     const otherLayer = layer === "corner" ? "center" : "corner";
-    const nextLayer = marks[layer].map((cellNotes, index) => {
+    const nextLayer = liveMarks[layer].map((cellNotes, index) => {
       if (!targetSet.has(index) || cellNotes.includes(digit)) {
         return cellNotes;
       }
       return [...cellNotes, digit].sort((left, right) => left - right);
     });
-    const nextOther = marks[otherLayer].map((cellNotes, index) =>
+    const nextOther = liveMarks[otherLayer].map((cellNotes, index) =>
       targetSet.has(index) ? cellNotes.filter((note) => note !== digit) : cellNotes
     );
-    commitMarks({ ...marks, [layer]: nextLayer, [otherLayer]: nextOther });
+    commitMarks({ ...liveMarks, [layer]: nextLayer, [otherLayer]: nextOther });
   }
 
   function applyColorToSelection(color: number | null) {
@@ -660,7 +697,8 @@ export function useSudokuGame() {
       return;
     }
 
-    commitMarks({ ...marks, colors: toggleColorOnCells(marks.colors, selectedIndexes, color) });
+    const liveMarks = marksRef.current;
+    commitMarks({ ...liveMarks, colors: toggleColorOnCells(liveMarks.colors, selectedIndexes, color) });
   }
 
   function clearSelectedNotes() {
@@ -668,9 +706,10 @@ export function useSudokuGame() {
       return;
     }
 
+    const liveMarks = marksRef.current;
     const layer = entryMode === "corner" ? "corner" : "center";
-    const nextLayer = marks[layer].map((cellNotes, index) => (selectedIndexes.includes(index) ? [] : cellNotes));
-    commitMarks({ ...marks, [layer]: nextLayer });
+    const nextLayer = liveMarks[layer].map((cellNotes, index) => (selectedIndexes.includes(index) ? [] : cellNotes));
+    commitMarks({ ...liveMarks, [layer]: nextLayer });
   }
 
   function applyValueToCells(indexes: number[], value: number | null, shouldAdvance: boolean) {
@@ -680,8 +719,8 @@ export function useSudokuGame() {
       return;
     }
 
-    let nextGrid = grid;
-    let nextMarks = marks;
+    let nextGrid = gridRef.current;
+    let nextMarks = marksRef.current;
     for (const index of editable) {
       if (isSolving) {
         const result = setCellValueWithMarks(nextGrid, nextMarks, index, value);
@@ -692,11 +731,12 @@ export function useSudokuGame() {
       }
     }
 
-    const nextLowConfidence = lowConfidence.filter((index) => !editable.includes(index));
+    const nextLowConfidence = lowConfidenceRef.current.filter((index) => !editable.includes(index));
     if (isSolving && hasBoardStateChanged(nextGrid, nextMarks, nextLowConfidence)) {
       recordUndoSnapshot();
     }
     updateGrid(nextGrid, nextMarks);
+    lowConfidenceRef.current = nextLowConfidence;
     setLowConfidence(nextLowConfidence);
     if (shouldAdvance && value !== null && editable.length === 1) {
       selectOnly(findNextInputIndex(nextGrid, editable[0]));
@@ -719,7 +759,7 @@ export function useSudokuGame() {
     if (next !== null) {
       // Move the selection onto the new digit too, like locking it by hand does,
       // so the highlighted cell follows the active number.
-      const matchingCell = findNextCellWithValue(nextGrid, next, selectedIndex);
+      const matchingCell = findNextCellWithValue(nextGrid, next, selectedIndexRef.current);
       if (matchingCell !== null) {
         selectOnly(matchingCell);
       }
@@ -733,14 +773,17 @@ export function useSudokuGame() {
     }
 
     if (hintPreview) {
+      const liveGrid = gridRef.current;
+      const liveMarks = marksRef.current;
       const cell = indexToCell(hintPreview.index);
-      const result = setCellValueWithMarks(grid, marks, hintPreview.index, hintPreview.digit);
-      const nextLowConfidence = lowConfidence.filter((index) => index !== hintPreview.index);
+      const result = setCellValueWithMarks(liveGrid, liveMarks, hintPreview.index, hintPreview.digit);
+      const nextLowConfidence = lowConfidenceRef.current.filter((index) => index !== hintPreview.index);
       if (hasBoardStateChanged(result.grid, result.marks, nextLowConfidence)) {
         recordUndoSnapshot();
       }
       updateGrid(result.grid, result.marks);
       selectOnly(hintPreview.index);
+      lowConfidenceRef.current = nextLowConfidence;
       setLowConfidence(nextLowConfidence);
       setMessages([`Applied ${hintPreview.digit} at R${cell.row}C${cell.col}. Request another hint when you are ready.`]);
       maybeAdvanceQuickFillDigit(result.grid, hintPreview.digit);
@@ -748,16 +791,18 @@ export function useSudokuGame() {
     }
 
     if (currentHint.action.type === "eliminate" && currentHint.action.eliminations.length > 0) {
+      const liveGrid = gridRef.current;
+      const liveMarks = marksRef.current;
       const nextMarks = {
-        ...marks,
-        center: applyHintEliminationsToNotes(grid, marks.center, currentHint.action.eliminations),
-        corner: pruneEliminationsFromNotes(marks.corner, currentHint.action.eliminations)
+        ...liveMarks,
+        center: applyHintEliminationsToNotes(liveGrid, liveMarks.center, currentHint.action.eliminations),
+        corner: pruneEliminationsFromNotes(liveMarks.corner, currentHint.action.eliminations)
       };
       const firstCell = currentHint.action.eliminations[0].cell;
-      if (hasBoardStateChanged(grid, nextMarks)) {
+      if (hasBoardStateChanged(liveGrid, nextMarks)) {
         recordUndoSnapshot();
       }
-      updateGrid(grid, nextMarks);
+      updateGrid(liveGrid, nextMarks);
       selectOnly(cellToIndex(firstCell));
       setMessages([
         `Applied ${currentHint.action.eliminations.length} candidate elimination${currentHint.action.eliminations.length === 1 ? "" : "s"}. Request another hint when you are ready.`
@@ -862,13 +907,14 @@ export function useSudokuGame() {
       return;
     }
 
+    const liveMarks = marksRef.current;
     if (hasAnyNotes) {
-      commitMarks({ ...marks, corner: marks.corner.map(() => []), center: marks.center.map(() => []) });
+      commitMarks({ ...liveMarks, corner: liveMarks.corner.map(() => []), center: liveMarks.center.map(() => []) });
       setMessages(["Removed all notes."]);
       return;
     }
 
-    commitMarks({ ...marks, corner: quickFillNotes(grid) });
+    commitMarks({ ...liveMarks, corner: quickFillNotes(gridRef.current) });
     setMessages(["Filled corner notes for all empty cells from the current board."]);
   }
 
