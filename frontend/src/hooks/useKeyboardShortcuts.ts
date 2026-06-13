@@ -47,11 +47,11 @@ export function useKeyboardShortcuts(game: SudokuGame) {
         return;
       }
 
-      // Tab cycles the entry mode (Normal, Corner, Center, Color) while solving.
+      // Tab toggles between Normal and Note entry while solving.
       if (event.key === "Tab") {
         if (current.isSolving) {
           event.preventDefault();
-          current.cycleEntryMode();
+          current.toggleNoteMode();
         }
         return;
       }

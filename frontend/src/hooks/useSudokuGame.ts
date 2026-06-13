@@ -8,7 +8,7 @@ import {
   requestHint,
   type HintResponse
 } from "../lib/api";
-import { SAMPLE_PUZZLE, ENTRY_MODES, type EntryMode, type GeneratedLevel, type TutorPhase } from "../lib/constants";
+import { SAMPLE_PUZZLE, type EntryMode, type GeneratedLevel, type TutorPhase } from "../lib/constants";
 import {
   checkResultMessage,
   collectConflictIndexes,
@@ -81,6 +81,8 @@ export function useSudokuGame() {
   ]);
   const [busyLabel, setBusyLabel] = useState<string | null>(null);
   const [entryMode, setEntryMode] = useState<EntryMode>("value");
+  // Remembers the last marking mode so the Normal/Note toggle can restore it.
+  const [noteType, setNoteType] = useState<Exclude<EntryMode, "value">>("corner");
   const [quickFillMode, setQuickFillMode] = useState(false);
   const [quickFillDigit, setQuickFillDigit] = useState<number | null>(null);
   const [puzzleText, setPuzzleText] = useState("");
@@ -114,7 +116,8 @@ export function useSudokuGame() {
   const selectionAllFilled = selectedIndexes.every((index) => grid[index] !== null);
   const selectedNotes =
     entryMode === "corner" ? (marks.corner[selectedIndex] ?? []) : (marks.center[selectedIndex] ?? []);
-  const activeHighlightDigit = quickFillDigit ?? grid[selectedIndex];
+  const hasAnyNotes = marks.corner.some((notes) => notes.length > 0) || marks.center.some((notes) => notes.length > 0);
+  const activeHighlightDigit = quickFillDigit ?? (selectedIndex >= 0 ? grid[selectedIndex] : null);
   const validation = useMemo(() => validateSudokuGrid(grid), [grid]);
   const statusMessages = validation.valid ? messages : ["Fix the highlighted conflicts before requesting a hint."];
   const conflictIndexes = useMemo(() => collectConflictIndexes(validation.conflicts), [validation]);
@@ -136,7 +139,10 @@ export function useSudokuGame() {
     (Boolean(hintPreview) || Boolean(currentHint?.action.type === "eliminate" && currentHint.action.eliminations.length > 0));
   const isSolved = isSolving && filledCount === 81 && validation.valid;
   const showFinishDialog = isSolved && !finishDismissed;
-  const peerHighlightIndexes = useMemo(() => new Set(peerIndexes(selectedIndex)), [selectedIndex]);
+  const peerHighlightIndexes = useMemo(
+    () => new Set(selectedIndex >= 0 ? peerIndexes(selectedIndex) : []),
+    [selectedIndex]
+  );
   const selectedIndexSet = useMemo(() => new Set(selectedIndexes), [selectedIndexes]);
   const givensCount = useMemo(() => givenMask.filter(Boolean).length, [givenMask]);
   const finishStats = {
@@ -235,6 +241,13 @@ export function useSudokuGame() {
     setSelectedIndexes([index]);
   }
 
+  // Drops the selection entirely (e.g. a click landing off the board). -1 marks
+  // "no cell"; the derived peer/highlight sets handle it.
+  function clearSelection() {
+    setSelectedIndex(-1);
+    setSelectedIndexes([]);
+  }
+
   function beginCellSelection(index: number, additive: boolean) {
     if (paused) {
       return;
@@ -251,7 +264,12 @@ export function useSudokuGame() {
         return next.length > 0 ? next : [index];
       });
     } else {
-      setSelectedIndexes([index]);
+      // Clicking inside an existing multi-selection (built by drag or Alt-click)
+      // keeps the whole group so the click can mark all of them at once;
+      // clicking anywhere else starts a fresh single selection.
+      setSelectedIndexes((current) =>
+        quickFillMode && current.length > 1 && current.includes(index) ? current : [index]
+      );
     }
   }
 
@@ -357,6 +375,12 @@ export function useSudokuGame() {
     if (paused) {
       return;
     }
+    // In color mode the eraser always clears the selected cells' colors, even
+    // under quick fill (which otherwise treats a null press as "unlock digit").
+    if (entryMode === "color" && value === null) {
+      applyColorToSelection(null);
+      return;
+    }
     if (quickFillMode) {
       if (value === null) {
         setQuickFillDigit(null);
@@ -414,6 +438,13 @@ export function useSudokuGame() {
       return;
     }
     if (!quickFillMode || quickFillDigit === null) {
+      return;
+    }
+
+    // A click inside a kept multi-selection marks every selected cell with the
+    // locked digit; a click on a single cell only fills that one.
+    if (selectedIndexes.length > 1 && selectedIndexes.includes(index)) {
+      placeQuickFillOnSelection();
       return;
     }
 
@@ -477,13 +508,24 @@ export function useSudokuGame() {
       return;
     }
     const layer = entryMode === "corner" ? "corner" : "center";
+    const otherLayer = layer === "corner" ? "center" : "corner";
     const emptyTargets = selectedIndexes.filter((index) => grid[index] === null);
     if (emptyTargets.length === 0) {
       setMessages(["Notes can only be edited on empty cells."]);
       return;
     }
 
-    commitMarks({ ...marks, [layer]: toggleNoteOnCells(marks[layer], grid, emptyTargets, digit) });
+    // A digit lives in either the corner or the center layer, never both: drop
+    // it from the opposite layer on the cells we just touched.
+    const targetSet = new Set(emptyTargets);
+    const nextOther = marks[otherLayer].map((cellNotes, index) =>
+      targetSet.has(index) ? cellNotes.filter((note) => note !== digit) : cellNotes
+    );
+    commitMarks({
+      ...marks,
+      [layer]: toggleNoteOnCells(marks[layer], grid, emptyTargets, digit),
+      [otherLayer]: nextOther
+    });
   }
 
   function applyColorToSelection(color: number | null) {
@@ -668,32 +710,32 @@ export function useSudokuGame() {
     }
 
     setEntryMode(mode);
+    if (mode !== "value") {
+      setNoteType(mode);
+    }
     setMessages([entryModeMessage(mode)]);
   }
 
-  function cycleEntryMode() {
-    if (!isSolving) {
-      return;
-    }
-    const order = ENTRY_MODES.map((mode) => mode.id);
-    const next = order[(order.indexOf(entryMode) + 1) % order.length];
-    setEntryMode(next);
-    setMessages([entryModeMessage(next)]);
+  // Flips between Normal (value) entry and the last-used marking mode.
+  function toggleNoteMode() {
+    changeEntryMode(entryMode === "value" ? noteType : "value");
   }
 
-  function fillAllNotes() {
+  // Single toggle: clears every note when any exist, otherwise fills center notes.
+  function toggleAllNotes() {
     if (!isSolving) {
       setMessages(["Start solving before filling notes."]);
       return;
     }
 
-    commitMarks({ ...marks, center: quickFillNotes(grid) });
-    setMessages(["Filled center notes for all empty cells from the current board."]);
-  }
+    if (hasAnyNotes) {
+      commitMarks({ ...marks, corner: marks.corner.map(() => []), center: marks.center.map(() => []) });
+      setMessages(["Removed all notes."]);
+      return;
+    }
 
-  function clearAllNotes() {
-    commitMarks({ ...marks, corner: marks.corner.map(() => []), center: marks.center.map(() => []) });
-    setMessages(["Removed all notes."]);
+    commitMarks({ ...marks, corner: quickFillNotes(grid) });
+    setMessages(["Filled corner notes for all empty cells from the current board."]);
   }
 
   function loadPuzzleFromText() {
@@ -780,7 +822,9 @@ export function useSudokuGame() {
   }
 
   function moveSelectionBy(direction: NavDirection, extend = false) {
-    const next = moveSelection(selectedIndex, direction);
+    // After the selection was cleared, an arrow key re-enters the board at the
+    // top-left rather than staying nowhere.
+    const next = selectedIndex < 0 ? 0 : moveSelection(selectedIndex, direction);
     setSelectedIndex(next);
     if (extend) {
       setSelectedIndexes((current) => (current.includes(next) ? current : [...current, next]));
@@ -840,6 +884,8 @@ export function useSudokuGame() {
     statusMessages,
     busyLabel,
     entryMode,
+    noteType,
+    hasAnyNotes,
     quickFillMode,
     quickFillDigit,
     puzzleText,
@@ -853,6 +899,7 @@ export function useSudokuGame() {
     clickCell,
     beginCellSelection,
     dragCellSelection,
+    clearSelection,
     placeQuickFillAt,
     placeQuickFillOnSelection,
     moveSelectionBy,
@@ -865,9 +912,8 @@ export function useSudokuGame() {
     startSolving,
     toggleQuickFillMode,
     changeEntryMode,
-    cycleEntryMode,
-    fillAllNotes,
-    clearAllNotes,
+    toggleNoteMode,
+    toggleAllNotes,
     loadPuzzleFromText,
     generatePuzzle,
     loadSample,

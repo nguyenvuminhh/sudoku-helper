@@ -9,7 +9,7 @@ const KEYBOARD_SHORTCUTS: Array<{ keys: string[]; label: string }> = [
   { keys: ["Shift", "↑↓←→"], label: "Extend the selection while moving" },
   { keys: ["Alt", "Click"], label: "Add or remove a cell from the selection (drag also selects)" },
   { keys: ["Enter"], label: "Apply the quick-fill digit to the selection" },
-  { keys: ["Tab"], label: "Cycle entry mode (Normal, Corner, Center, Color)" },
+  { keys: ["Tab"], label: "Toggle between Normal and Note entry" },
   { keys: ["Z", "X", "C", "V"], label: "Jump to Normal, Corner, Center, or Color mode" },
   { keys: ["Ctrl", "Z"], label: "Undo the last board change" },
   { keys: ["Ctrl", "Y"], label: "Redo the last undone change" },

@@ -13,6 +13,7 @@ import { SolvingControls } from "../components/SolvingControls";
 import { StatusPanel } from "../components/StatusPanel";
 import { SudokuBoard } from "../components/SudokuBoard";
 import { TopBar } from "../components/TopBar";
+import { useClickOutsideBoard } from "../hooks/useClickOutsideBoard";
 import { useImageImport } from "../hooks/useImageImport";
 import { useKeyboardShortcuts } from "../hooks/useKeyboardShortcuts";
 import { useSudokuGame } from "../hooks/useSudokuGame";
@@ -24,6 +25,7 @@ export default function SudokuTutorPage() {
   const { theme, toggleTheme } = useTheme();
   const imageImport = useImageImport(game);
   useKeyboardShortcuts(game);
+  useClickOutsideBoard(game);
 
   return (
     <main className="workspace">
@@ -34,9 +36,6 @@ export default function SudokuTutorPage() {
           <div className="board-header">
             <div>
               <p className="eyebrow">Board</p>
-              <h2>
-                R{game.selectedCell.row}C{game.selectedCell.col}
-              </h2>
             </div>
             <div className="board-tools">
               {game.isSolving ? (
@@ -80,7 +79,6 @@ export default function SudokuTutorPage() {
                 relatedIndexes: game.relatedIndexes,
                 eliminationIndexes: game.eliminationIndexes,
                 matchingValueIndexes: game.matchingHighlights.valueIndexes,
-                matchingNoteIndexes: game.matchingHighlights.noteIndexes,
                 peerIndexes: game.peerHighlightIndexes
               }}
               paused={game.paused}
@@ -156,15 +154,16 @@ export default function SudokuTutorPage() {
                   canUndo={game.undoStack.length > 0}
                   canRedo={game.redoStack.length > 0}
                   entryMode={game.entryMode}
+                  hasAnyNotes={game.hasAnyNotes}
                   quickFillMode={game.quickFillMode}
                   isValid={game.validation.valid}
                   filledCount={game.filledCount}
                   onUndo={game.undo}
                   onRedo={game.redo}
                   onEntryModeChange={game.changeEntryMode}
+                  onToggleNoteMode={game.toggleNoteMode}
                   onToggleQuickFill={game.toggleQuickFillMode}
-                  onFillAllNotes={game.fillAllNotes}
-                  onRemoveAllNotes={game.clearAllNotes}
+                  onToggleAllNotes={game.toggleAllNotes}
                   onCheck={game.check}
                   onHint={() => void game.hint()}
                 />
