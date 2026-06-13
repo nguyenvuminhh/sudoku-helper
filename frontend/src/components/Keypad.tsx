@@ -37,6 +37,10 @@ export function Keypad({
         : selectionAllGiven;
   const eraseDisabled = quickFillMode ? !isSolving : noteMode || entryMode === "color" ? !isSolving : selectionAllGiven;
 
+  // A digit is "done" once all nine copies are on the board. Colors never
+  // complete, so every swatch always shows.
+  const isComplete = (digit: number) => entryMode !== "color" && digitCounts[digit] >= 9;
+
   return (
     <div className="keypad" aria-label="Digit entry">
       {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((digit) => {
@@ -56,12 +60,16 @@ export function Keypad({
           );
         }
 
+        // A finished digit leaves an empty slot so the others keep their place.
+        if (isComplete(digit)) {
+          return <span className="keypad-blank" key={digit} aria-hidden="true" />;
+        }
+
         return (
           <button
             className={[
               noteMode && selectedNotes.includes(digit) ? "note-active" : "",
-              quickFillDigit === digit ? "quick-fill-active" : "",
-              digitCounts[digit] >= 9 ? "digit-complete" : ""
+              quickFillDigit === digit ? "quick-fill-active" : ""
             ]
               .filter(Boolean)
               .join(" ")}

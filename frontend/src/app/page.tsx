@@ -1,6 +1,6 @@
 "use client";
 
-import { Grid3X3, Pause, PartyPopper, Play, RotateCcw, Timer } from "lucide-react";
+import { ArrowLeft, CircleAlert, Pause, PartyPopper, Play, Timer } from "lucide-react";
 
 import { FinishDialog } from "../components/FinishDialog";
 import { HintPanel } from "../components/HintPanel";
@@ -33,33 +33,33 @@ export default function SudokuTutorPage() {
 
       <section className="content-grid">
         <section className="board-zone" aria-label="Sudoku board">
-          <div className="board-header">
-            <div>
-              <p className="eyebrow">Board</p>
-            </div>
-            <div className="board-tools">
-              {game.isSolving ? (
-                <>
-                  <span className="timer-chip" role="timer" aria-label={`Elapsed time ${formatElapsedSeconds(game.elapsedSeconds)}`}>
-                    <Timer size={15} />
-                    {formatElapsedSeconds(game.elapsedSeconds)}
-                  </span>
-                  <button
-                    type="button"
-                    className="pause-button"
-                    onClick={game.togglePause}
-                    disabled={game.isSolved}
-                    aria-label={game.paused ? "Resume the solve clock" : "Pause the solve clock"}
-                  >
-                    {game.paused ? <Play size={15} /> : <Pause size={15} />}
-                  </button>
-                </>
-              ) : null}
-              <div className="meter" aria-label={`${game.filledCount} filled cells`}>
-                <span style={{ width: `${(game.filledCount / 81) * 100}%` }} />
+          {game.isSolving ? (
+            <div className="board-controls">
+              <div className="board-header">
+                <span
+                  className={`error-chip ${game.conflictIndexes.size > 0 ? "error-chip-warn" : "error-chip-ok"}`}
+                  aria-live="polite"
+                  aria-label={`${game.conflictIndexes.size} errors`}
+                >
+                  <CircleAlert size={14} />
+                  {game.conflictIndexes.size}
+                </span>
+                <span className="timer-chip" role="timer" aria-label={`Elapsed time ${formatElapsedSeconds(game.elapsedSeconds)}`}>
+                  <Timer size={15} />
+                  {formatElapsedSeconds(game.elapsedSeconds)}
+                </span>
+                <button
+                  type="button"
+                  className="pause-button"
+                  onClick={game.togglePause}
+                  disabled={game.isSolved}
+                  aria-label={game.paused ? "Resume the solve clock" : "Pause the solve clock"}
+                >
+                  {game.paused ? <Play size={15} /> : <Pause size={15} />}
+                </button>
               </div>
             </div>
-          </div>
+          ) : null}
 
           <div className="board-wrap">
             <SudokuBoard
@@ -120,15 +120,6 @@ export default function SudokuTutorPage() {
 
         <aside className="inspector" aria-label="Hint explanation">
           <div className="actions-panel" aria-label="Sudoku controls">
-            <div className="controls-header">
-              <div className="panel-title">
-                <Grid3X3 size={19} />
-                <h2>Controls</h2>
-              </div>
-              <button className="reset-icon-button" type="button" onClick={game.reset} aria-label="Reset puzzle">
-                <RotateCcw size={17} />
-              </button>
-            </div>
             <div className="action-grid">
               {game.phase === "loading" ? (
                 <LoadingControls
@@ -170,6 +161,12 @@ export default function SudokuTutorPage() {
                 />
               )}
             </div>
+            {game.isSolving ? (
+              <button type="button" className="return-button" onClick={game.reset} aria-label="Return to puzzle setup">
+                <ArrowLeft size={15} />
+                New puzzle
+              </button>
+            ) : null}
             <input
               ref={imageImport.fileInputRef}
               className="hidden-input"

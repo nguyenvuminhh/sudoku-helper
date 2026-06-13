@@ -189,7 +189,7 @@ h3 {
 }
 
 .topbar,
-.board-zone,
+.board-controls,
 .inspector > div {
   background: var(--panel-bg);
   border: 1px solid var(--line);
@@ -249,34 +249,42 @@ h3 {
 }
 
 .board-zone {
-  padding: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.board-controls {
+  padding: 14px 18px;
 }
 
 .board-header {
-  align-items: end;
+  align-items: center;
   display: flex;
-  gap: 20px;
-  justify-content: space-between;
-  margin-bottom: 14px;
+  gap: 10px;
 }
 
 .board-header h2 {
   font-size: 1.35rem;
 }
 
-.meter {
-  background: var(--meter-bg);
-  border-radius: 999px;
-  height: 10px;
-  max-width: 220px;
-  overflow: hidden;
-  width: 34%;
+.error-chip {
+  align-items: center;
+  display: inline-flex;
+  flex: 0 0 auto;
+  font-size: 0.78rem;
+  font-variant-numeric: tabular-nums;
+  font-weight: 800;
+  gap: 5px;
+  white-space: nowrap;
 }
 
-.meter span {
-  background: linear-gradient(90deg, var(--teal), var(--amber));
-  display: block;
-  height: 100%;
+.error-chip-ok {
+  color: var(--muted);
+}
+
+.error-chip-warn {
+  color: var(--coral);
 }
 
 .sudoku-board {
@@ -565,7 +573,6 @@ h3 {
   gap: 8px;
   grid-template-columns: repeat(10, minmax(0, 1fr));
   margin-inline: auto;
-  margin-top: 14px;
   max-width: min(680px, max(300px, calc(100vh - 300px)));
   max-width: min(680px, max(300px, calc(100svh - 300px)));
   width: 100%;
@@ -573,8 +580,9 @@ h3 {
 
 .keypad button {
   font-weight: 700;
+  min-height: 48px;
   min-width: 0;
-  padding: 0.5rem 0.2rem;
+  padding: 0.65rem 0.2rem;
   position: relative;
 }
 
@@ -634,14 +642,6 @@ h3 {
   font-weight: 900;
 }
 
-.keypad button.digit-complete:not(.quick-fill-active):not(.note-active) {
-  background: var(--mint);
-  border-color: var(--teal);
-  color: var(--teal-deep);
-  opacity: 0.6;
-  text-decoration: line-through;
-}
-
 .inspector {
   display: flex;
   flex-direction: column;
@@ -656,29 +656,17 @@ h3 {
   border-top: 5px solid var(--ink);
 }
 
-.controls-header {
-  align-items: center;
-  display: flex;
-  gap: 12px;
-  justify-content: space-between;
+.return-button {
+  color: var(--muted);
+  font-size: 0.8rem;
+  justify-content: flex-start;
+  margin-top: 12px;
+  padding: 0.35rem 0.6rem;
+  width: 100%;
 }
 
-.reset-icon-button {
-  background: var(--panel);
-  border-color: var(--coral);
-  color: #a73727;
-  flex: 0 0 auto;
-  height: 38px;
-  justify-content: center;
-  min-height: 38px;
-  padding: 0;
-  width: 38px;
-}
-
-.reset-icon-button:hover {
-  background: var(--panel);
-  border-color: #c63f2d;
-  box-shadow: 0 8px 20px rgba(228, 85, 63, 0.16);
+.return-button:hover {
+  color: var(--ink);
 }
 
 .action-grid {
@@ -885,11 +873,9 @@ h3 {
   text-align: center;
 }
 
-/* Active toggle: accent fill + border so the state reads at a glance. */
+/* Active toggle: accent fill only — the background carries the state. */
 .action-grid .control-toggles .control-toggle.active {
   background: var(--mint);
-  border-color: var(--teal);
-  box-shadow: inset 0 0 0 1px var(--teal);
   color: var(--teal-deep);
 }
 
@@ -1337,16 +1323,13 @@ kbd {
 
 .timer-chip {
   align-items: center;
-  background: var(--mint);
-  border: 1px solid var(--teal);
-  border-radius: 999px;
-  color: var(--teal-deep);
+  color: var(--muted);
   display: inline-flex;
   font-size: 0.85rem;
   font-variant-numeric: tabular-nums;
   font-weight: 800;
   gap: 6px;
-  padding: 5px 12px;
+  margin-left: auto;
 }
 
 .pause-button {
@@ -1493,8 +1476,8 @@ kbd {
     padding: 8px;
   }
 
-  .board-zone {
-    padding: 10px;
+  .board-controls {
+    padding: 10px 14px;
   }
 
   .sudoku-board,
@@ -1513,8 +1496,8 @@ kbd {
   }
 
   .keypad button {
-    min-height: 36px;
-    padding: 0.42rem 0;
+    min-height: 44px;
+    padding: 0.55rem 0;
   }
 
   .sudoku-cell strong {

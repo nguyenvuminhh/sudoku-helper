@@ -100,6 +100,10 @@ export function useSudokuGame() {
 
   const draggingRef = useRef(false);
   const dragMovedRef = useRef(false);
+  // Drag-select only engages once the pointer leaves a small dead zone around the
+  // press point, so a tap that jitters across a cell border is not read as a drag.
+  const pointerStartRef = useRef<{ x: number; y: number } | null>(null);
+  const dragArmedRef = useRef(false);
   const rightPointerModeRef = useRef<"note" | "inactive" | null>(null);
   const rightPointerStartIndexRef = useRef<number | null>(null);
   const rightPointerMovedRef = useRef(false);
@@ -233,16 +237,36 @@ export function useSudokuGame() {
     }
   }, [isSolved, solvedAnnounced, elapsedSeconds]);
 
-  // End a drag selection wherever the pointer is released.
+  // End a drag selection wherever the pointer is released, and only arm the drag
+  // once the pointer has travelled past a small threshold from the press point.
   useEffect(() => {
+    const DRAG_THRESHOLD = 8;
+
+    function handlePointerMove(event: PointerEvent) {
+      if (!draggingRef.current || dragArmedRef.current || !pointerStartRef.current) {
+        return;
+      }
+      const dx = event.clientX - pointerStartRef.current.x;
+      const dy = event.clientY - pointerStartRef.current.y;
+      if (Math.hypot(dx, dy) > DRAG_THRESHOLD) {
+        dragArmedRef.current = true;
+      }
+    }
+
     function handlePointerUp() {
       draggingRef.current = false;
+      dragArmedRef.current = false;
+      pointerStartRef.current = null;
       rightPointerModeRef.current = null;
       rightPointerStartIndexRef.current = null;
       rightPointerVisitedRef.current = new Set();
     }
+    window.addEventListener("pointermove", handlePointerMove);
     window.addEventListener("pointerup", handlePointerUp);
-    return () => window.removeEventListener("pointerup", handlePointerUp);
+    return () => {
+      window.removeEventListener("pointermove", handlePointerMove);
+      window.removeEventListener("pointerup", handlePointerUp);
+    };
   }, []);
 
   function selectOnly(index: number) {
@@ -257,7 +281,7 @@ export function useSudokuGame() {
     setSelectedIndexes([]);
   }
 
-  function beginCellSelection(index: number, additive: boolean, button = 0) {
+  function beginCellSelection(index: number, additive: boolean, button = 0, x = 0, y = 0) {
     if (paused) {
       return;
     }
@@ -277,6 +301,8 @@ export function useSudokuGame() {
     rightPointerVisitedRef.current = new Set();
     draggingRef.current = true;
     dragMovedRef.current = false;
+    dragArmedRef.current = false;
+    pointerStartRef.current = { x, y };
     selectCellFromPointerDown(index, additive);
   }
 
@@ -322,7 +348,9 @@ export function useSudokuGame() {
       }
       return;
     }
-    if (!draggingRef.current) {
+    // Ignore cell-to-cell movement until the press has travelled far enough to
+    // count as a real drag; otherwise a jittery tap would hijack the click.
+    if (!draggingRef.current || !dragArmedRef.current) {
       return;
     }
     dragMovedRef.current = true;
@@ -689,6 +717,12 @@ export function useSudokuGame() {
     const next = nextIncompleteDigit(nextGrid, placedValue);
     setQuickFillDigit(next);
     if (next !== null) {
+      // Move the selection onto the new digit too, like locking it by hand does,
+      // so the highlighted cell follows the active number.
+      const matchingCell = findNextCellWithValue(nextGrid, next, selectedIndex);
+      if (matchingCell !== null) {
+        selectOnly(matchingCell);
+      }
       setMessages([`All ${placedValue}s are placed. Quick fill moved to ${next}.`]);
     }
   }

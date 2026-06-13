@@ -17,9 +17,11 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
   return (
     <html lang="en" suppressHydrationWarning className={`${inter.variable} ${fraunces.variable}`}>
       <head>
-        <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />
+        <script suppressHydrationWarning dangerouslySetInnerHTML={{ __html: themeInitScript }} />
       </head>
-      <body>{children}</body>
+      {/* Extensions (ColorZilla, Grammarly, …) inject attributes onto <body> before
+          React hydrates; suppress the resulting attribute-mismatch warning. */}
+      <body suppressHydrationWarning>{children}</body>
     </html>
   );
 }
