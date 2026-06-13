@@ -374,9 +374,10 @@ export function useSudokuGame() {
   }
 
   function recordUndoSnapshot() {
-    setUndoStack((items) =>
-      pushUndoSnapshot(items, createBoardSnapshot(gridRef.current, marksRef.current, selectedIndexRef.current, lowConfidenceRef.current))
-    );
+    // Snapshot from the live refs *now*: a setState updater runs lazily, by which
+    // point updateGrid/commitMarks may have advanced the refs past this edit.
+    const snapshot = createBoardSnapshot(gridRef.current, marksRef.current, selectedIndexRef.current, lowConfidenceRef.current);
+    setUndoStack((items) => pushUndoSnapshot(items, snapshot));
     setRedoStack([]);
   }
 
@@ -398,9 +399,8 @@ export function useSudokuGame() {
       return;
     }
 
-    setRedoStack((items) =>
-      pushUndoSnapshot(items, createBoardSnapshot(gridRef.current, marksRef.current, selectedIndexRef.current, lowConfidenceRef.current))
-    );
+    const redoSnapshot = createBoardSnapshot(gridRef.current, marksRef.current, selectedIndexRef.current, lowConfidenceRef.current);
+    setRedoStack((items) => pushUndoSnapshot(items, redoSnapshot));
     restoreSnapshot(restored.snapshot);
     setUndoStack(restored.stack);
     setMessages(["Undid the last board change."]);
@@ -412,9 +412,8 @@ export function useSudokuGame() {
       return;
     }
 
-    setUndoStack((items) =>
-      pushUndoSnapshot(items, createBoardSnapshot(gridRef.current, marksRef.current, selectedIndexRef.current, lowConfidenceRef.current))
-    );
+    const undoSnapshot = createBoardSnapshot(gridRef.current, marksRef.current, selectedIndexRef.current, lowConfidenceRef.current);
+    setUndoStack((items) => pushUndoSnapshot(items, undoSnapshot));
     restoreSnapshot(restored.snapshot);
     setRedoStack(restored.stack);
     setMessages(["Redid the last undone change."]);

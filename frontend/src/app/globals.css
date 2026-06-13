@@ -513,16 +513,6 @@ h3 {
   min-width: 0;
 }
 
-.corner-marks .slot-tl { grid-area: 1 / 1; }
-.corner-marks .slot-tr { grid-area: 1 / 3; }
-.corner-marks .slot-bl { grid-area: 3 / 1; }
-.corner-marks .slot-br { grid-area: 3 / 3; }
-.corner-marks .slot-tc { grid-area: 1 / 2; }
-.corner-marks .slot-bc { grid-area: 3 / 2; }
-.corner-marks .slot-ml { grid-area: 2 / 1; }
-.corner-marks .slot-mr { grid-area: 2 / 3; }
-.corner-marks .slot-cc { grid-area: 2 / 2; }
-
 /* Center marks sit as one compact row in the middle of the cell. */
 .center-marks {
   align-items: center;

@@ -122,27 +122,16 @@ export function SudokuBoard({
   );
 }
 
-/* Corner marks fill the cell edge positions in reading order: the first four
-   notes claim the corners, later ones the edge midpoints, the ninth the
-   middle. */
-const CORNER_SLOTS = [
-  "slot-tl",
-  "slot-tr",
-  "slot-bl",
-  "slot-br",
-  "slot-tc",
-  "slot-bc",
-  "slot-ml",
-  "slot-mr",
-  "slot-cc"
-] as const;
-
+/* Corner marks sit in a fixed 3x3 grid keyed by the digit itself: 1 top-left,
+   2 top-centre, … 9 bottom-right. A digit always lands in the same spot, so the
+   same note lines up across every cell. */
 function CornerMarks({ activeDigit, values }: { activeDigit: number | null; values: number[] }) {
   return (
     <span className="corner-marks" aria-hidden="true">
-      {values.slice(0, 9).map((digit, position) => (
+      {values.slice(0, 9).map((digit) => (
         <span
-          className={`${CORNER_SLOTS[position]}${digit === activeDigit ? " same-digit-note" : ""}`}
+          className={digit === activeDigit ? "same-digit-note" : ""}
+          style={{ gridRow: Math.floor((digit - 1) / 3) + 1, gridColumn: ((digit - 1) % 3) + 1 }}
           key={digit}
         >
           {digit}
