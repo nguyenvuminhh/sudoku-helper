@@ -1,32 +1,24 @@
 "use client";
 
-import { AlertTriangle, Brain, Grid3X3, Loader2 } from "lucide-react";
+import { Brain, Loader2 } from "lucide-react";
 
 export function StatusPanel({ busyLabel, messages }: { busyLabel: string | null; messages: string[] }) {
+  const latest = messages[messages.length - 1] ?? "";
+
   return (
-    <div className="status-panel">
-      <div className="panel-title">
-        <Brain size={19} />
-        <h2>Strategy note</h2>
+    <div className="strategy">
+      <div className="strategy-label">
+        <Brain size={15} />
+        <span>Strategy note</span>
       </div>
       {busyLabel ? (
-        <p className="busy">
-          <Loader2 className="spin" size={18} />
+        <p className="strategy-text busy">
+          <Loader2 className="spin" size={16} />
           {busyLabel}...
         </p>
+      ) : latest ? (
+        <p className="strategy-text">{latest}</p>
       ) : null}
-      <div className="messages">
-        {messages.map((message, index) => (
-          <p key={`${message}-${index}`}>
-            {message.toLowerCase().includes("conflict") || message.toLowerCase().includes("failed") ? (
-              <AlertTriangle size={16} />
-            ) : (
-              <Grid3X3 size={16} />
-            )}
-            {message}
-          </p>
-        ))}
-      </div>
     </div>
   );
 }

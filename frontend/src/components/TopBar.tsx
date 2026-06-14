@@ -6,20 +6,20 @@ import type { Theme } from "../hooks/useTheme";
 
 export function TopBar({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: () => void }) {
   return (
-    <section className="topbar" aria-label="Sudoku tutor header">
-      <div>
-        <p className="eyebrow">Puzzle Hint</p>
-        <h1>Sudoku strategy desk</h1>
+    <header className="top" aria-label="Sudoku tutor header">
+      <div className="brand">
+        <span className="brand-mark" aria-hidden="true" />
+        <span className="brand-name">Sudoku strategy desk</span>
       </div>
       <button
         type="button"
-        className="theme-toggle"
+        className="theme-pill"
         onClick={onToggleTheme}
         aria-label={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
       >
-        {theme === "dark" ? <Sun size={17} /> : <Moon size={17} />}
-        {theme === "dark" ? "Light" : "Dark"}
+        {theme === "dark" ? <Moon size={15} /> : <Sun size={15} />}
+        <span>{theme === "dark" ? "Dark" : "Light"}</span>
       </button>
-    </section>
+    </header>
   );
 }

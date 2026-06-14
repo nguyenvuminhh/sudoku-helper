@@ -1,6 +1,6 @@
 "use client";
 
-import { Check, Lightbulb } from "lucide-react";
+import { Check } from "lucide-react";
 
 import type { HintResponse } from "../lib/api";
 
@@ -14,34 +14,16 @@ export function HintPanel({
   onApplyHint: () => void;
 }) {
   if (!hint) {
-    return (
-      <div className="hint-panel empty">
-        <div className="panel-title">
-          <Lightbulb size={18} />
-          <h2>Next hint</h2>
-        </div>
-        <p>Enter a valid puzzle and request a hint to see the next logical move.</p>
-      </div>
-    );
+    return null;
   }
 
   return (
-    <div className="hint-panel">
-      <div className="hint-panel-header">
-        <div className="panel-title">
-          <Lightbulb size={18} />
-          <h2>Next hint</h2>
-        </div>
-        <button type="button" onClick={onApplyHint} disabled={!canApplyHint}>
-          <Check size={17} />
-          Apply
-        </button>
-      </div>
+    <div className="hint-detail">
       <div className="technique-row">
         <span>{hint.technique.name}</span>
         <small>Rank {hint.technique.rank}</small>
       </div>
-      <h2>{hint.summary}</h2>
+      <h3>{hint.summary}</h3>
       <div className="explanation-stack">
         {hint.explanation.map((step, index) => (
           <p key={`${step}-${index}`}>
@@ -61,6 +43,10 @@ export function HintPanel({
           </p>
         </div>
       ) : null}
+      <button type="button" className="btn primary full" onClick={onApplyHint} disabled={!canApplyHint}>
+        <Check size={16} />
+        <span>Apply this step</span>
+      </button>
     </div>
   );
 }

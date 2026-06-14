@@ -25,9 +25,23 @@ function cell(row: number, col: number): HTMLElement {
   return screen.getByRole("gridcell", { name: new RegExp(`^Row ${row}, column ${col}(,|$)`) });
 }
 
+// The redesign loads a puzzle from the Import tab, then confirms from the
+// review step. Sample → review → Start solving.
 async function loadSampleAndConfirm(user: ReturnType<typeof userEvent.setup>) {
+  await user.click(screen.getByRole("tab", { name: /import/i }));
   await user.click(screen.getByRole("button", { name: /sample/i }));
-  await user.click(screen.getByRole("button", { name: /confirm/i }));
+  await user.click(screen.getByRole("button", { name: /start solving/i }));
+}
+
+// Advanced actions (quick fill, auto fill, check, new puzzle) live behind the
+// entry toolbar's ⋯ More popover.
+async function openMore(user: ReturnType<typeof userEvent.setup>) {
+  await user.click(screen.getByRole("button", { name: /more tools/i }));
+}
+
+async function toggleQuickFill(user: ReturnType<typeof userEvent.setup>) {
+  await openMore(user);
+  await user.click(screen.getByRole("button", { name: /^quick fill$/i }));
 }
 
 function makePlaceHint(row: number, col: number, digit: number): HintResponse {
@@ -72,8 +86,8 @@ describe("SudokuTutorPage", () => {
     render(<SudokuTutorPage />);
 
     expect(screen.getByRole("grid", { name: /sudoku grid/i })).toBeDefined();
+    expect(screen.getByRole("heading", { name: /start a puzzle/i })).toBeDefined();
     expect(screen.getByText(/enter a puzzle on the board or upload/i)).toBeDefined();
-    expect(screen.getByRole("button", { name: /confirm/i }).hasAttribute("disabled")).toBe(true);
   });
 
   it("types digits into the board and advances to the next empty cell", async () => {
@@ -96,6 +110,8 @@ describe("SudokuTutorPage", () => {
     expect(screen.getByText(/solving phase started/i)).toBeDefined();
     // R1C4 holds the sample given 6 and is announced as a loaded clue.
     expect(cell(1, 4).getAttribute("aria-label")).toContain("loaded clue");
+    // Quick fill stays on by default after confirming.
+    await openMore(user);
     expect(screen.getByRole("button", { name: /^quick fill$/i }).getAttribute("aria-pressed")).toBe("true");
   });
 
@@ -105,7 +121,7 @@ describe("SudokuTutorPage", () => {
 
     await loadSampleAndConfirm(user);
     // Turn quick fill off so digit presses become notes, then pick the mode.
-    await user.click(screen.getByRole("button", { name: /^quick fill$/i }));
+    await toggleQuickFill(user);
     await user.click(screen.getByRole("button", { name: /^corner$/i }));
     await user.click(cell(1, 1));
     await user.click(screen.getByRole("button", { name: "5" }));
@@ -118,7 +134,7 @@ describe("SudokuTutorPage", () => {
     render(<SudokuTutorPage />);
 
     await loadSampleAndConfirm(user);
-    await user.click(screen.getByRole("button", { name: /^quick fill$/i }));
+    await toggleQuickFill(user);
     await user.click(screen.getByRole("button", { name: /^center$/i }));
     await user.click(cell(1, 1));
     await user.click(screen.getByRole("button", { name: "5" }));
@@ -132,7 +148,7 @@ describe("SudokuTutorPage", () => {
     render(<SudokuTutorPage />);
 
     await loadSampleAndConfirm(user);
-    await user.click(screen.getByRole("button", { name: /^quick fill$/i }));
+    await toggleQuickFill(user);
     await user.click(screen.getByRole("button", { name: /^color$/i }));
     await user.click(cell(1, 1));
     await user.click(screen.getByRole("button", { name: /paint green/i }));
@@ -163,7 +179,7 @@ describe("SudokuTutorPage", () => {
     render(<SudokuTutorPage />);
 
     await loadSampleAndConfirm(user);
-    await user.click(screen.getByRole("button", { name: /^quick fill$/i }));
+    await toggleQuickFill(user);
 
     await user.click(cell(1, 1));
     await user.keyboard("[AltLeft>]");
@@ -211,12 +227,13 @@ describe("SudokuTutorPage", () => {
     const user = userEvent.setup();
     render(<SudokuTutorPage />);
 
-    const five = screen.getByRole("button", { name: "5" });
-    expect(five.querySelector(".remaining-count")?.textContent).toBe("9");
+    await loadSampleAndConfirm(user);
+    expect(document.querySelector(".keypad .remaining-count")).not.toBeNull();
 
+    await user.click(screen.getByRole("button", { name: /^settings$/i }));
     await user.click(screen.getByRole("switch", { name: /show remaining digit counts/i }));
 
-    expect(five.querySelector(".remaining-count")).toBeNull();
+    expect(document.querySelector(".keypad .remaining-count")).toBeNull();
   });
 
   it("places the quick fill digit by clicking cells", async () => {
@@ -272,6 +289,7 @@ describe("SudokuTutorPage", () => {
     render(<SudokuTutorPage />);
 
     await loadSampleAndConfirm(user);
+    await openMore(user);
     await user.click(screen.getByRole("button", { name: /check the puzzle/i }));
 
     expect(screen.getByText(/no mistakes so far/i)).toBeDefined();
@@ -283,9 +301,8 @@ describe("SudokuTutorPage", () => {
     render(<SudokuTutorPage />);
 
     await loadSampleAndConfirm(user);
-    await user.click(screen.getByRole("button", { name: /^hint$/i }));
+    await user.click(screen.getByRole("button", { name: /get a hint/i }));
 
-    // The technique name shows in both the hint panel and the history panel.
     expect((await screen.findAllByText("Naked Single")).length).toBeGreaterThan(0);
     expect(screen.getAllByText("R1C1 must be 7.").length).toBeGreaterThan(0);
 
@@ -325,7 +342,7 @@ describe("SudokuTutorPage", () => {
     });
     render(<SudokuTutorPage />);
 
-    await user.click(screen.getByRole("button", { name: /generate/i }));
+    await user.click(screen.getByRole("button", { name: /generate puzzle/i }));
 
     expect(await screen.findByText(/generated easy puzzle/i)).toBeDefined();
     expect(within(cell(1, 1)).getByText("1")).toBeDefined();
@@ -385,10 +402,11 @@ describe("SudokuTutorPage", () => {
     const puzzle = `${solution.slice(0, 72)}0${solution.slice(73, 80)}0`;
     render(<SudokuTutorPage />);
 
+    await user.click(screen.getByRole("tab", { name: /import/i }));
     await user.click(screen.getByLabelText(/81-character puzzle/i));
     await user.paste(puzzle);
     await user.click(screen.getByRole("button", { name: /load puzzle/i }));
-    await user.click(screen.getByRole("button", { name: /confirm/i }));
+    await user.click(screen.getByRole("button", { name: /start solving/i }));
 
     // Completing the 9s moves quick fill to the only incomplete digit, 3.
     await user.click(screen.getByRole("button", { name: "9" }));
@@ -428,15 +446,18 @@ describe("SudokuTutorPage", () => {
     expect(cell(1, 4).getAttribute("aria-label")).toContain("loaded clue");
   });
 
-  it("keeps controls in the right rail above the strategy note", () => {
+  it("keeps the entry toolbar by the board and the strategy rail alongside it", async () => {
+    const user = userEvent.setup();
     render(<SudokuTutorPage />);
 
-    const rail = screen.getByRole("complementary", { name: /hint explanation/i });
-    const sections = Array.from(rail.children).map((child) => child.getAttribute("aria-label") ?? child.className);
-    const controlsIndex = sections.findIndex((label) => label.includes("Sudoku controls"));
-    const statusIndex = sections.findIndex((label) => label.includes("status-panel"));
+    await loadSampleAndConfirm(user);
 
-    expect(controlsIndex).toBeGreaterThan(-1);
-    expect(statusIndex).toBeGreaterThan(controlsIndex);
+    const rail = screen.getByRole("complementary", { name: /hint explanation/i });
+    // The contextual rail holds the strategy note and the hint call-to-action.
+    expect(within(rail).getByText(/strategy note/i)).toBeDefined();
+    expect(within(rail).getByRole("button", { name: /get a hint/i })).toBeDefined();
+    // The entry toolbar lives in the board column, not the rail.
+    expect(within(rail).queryByLabelText(/solving controls/i)).toBeNull();
+    expect(screen.getByLabelText(/solving controls/i)).toBeDefined();
   });
 });

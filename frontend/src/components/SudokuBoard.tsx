@@ -26,6 +26,7 @@ export function SudokuBoard({
   hintPreview,
   highlights,
   paused,
+  ghost,
   onCellPointerDown,
   onCellPointerEnter,
   onCellPointerUp,
@@ -43,14 +44,16 @@ export function SudokuBoard({
   hintPreview: HintPreview | null;
   highlights: BoardHighlights;
   paused: boolean;
+  ghost?: boolean;
   onCellPointerDown: (index: number, additive: boolean, button: number, x: number, y: number, pointerType: string) => void;
   onCellPointerEnter: (index: number) => void;
   onCellPointerUp: () => void;
   onCellClick: (index: number, additive: boolean) => void;
   onCellContextMenu: (index: number) => void;
 }) {
+  const boardClass = ["sudoku-board", paused ? "paused" : "", ghost ? "ghost" : ""].filter(Boolean).join(" ");
   return (
-    <div className={paused ? "sudoku-board paused" : "sudoku-board"} role="grid" aria-label="Sudoku grid">
+    <div className={boardClass} role="grid" aria-label="Sudoku grid">
       {grid.map((value, index) => {
         const row = Math.floor(index / 9);
         const col = index % 9;

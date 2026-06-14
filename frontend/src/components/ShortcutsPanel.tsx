@@ -1,7 +1,5 @@
 "use client";
 
-import { Keyboard } from "lucide-react";
-
 const KEYBOARD_SHORTCUTS: Array<{ keys: string[]; label: string }> = [
   { keys: ["1", "–", "9"], label: "Enter a digit, note, or color in the selected cells" },
   { keys: ["Space"], label: "Clear the selected cells" },
@@ -18,29 +16,23 @@ const KEYBOARD_SHORTCUTS: Array<{ keys: string[]; label: string }> = [
 
 export function ShortcutsPanel() {
   return (
-    <div className="shortcuts-panel">
-      <div className="panel-title">
-        <Keyboard size={18} />
-        <h2>Keyboard shortcuts</h2>
-      </div>
-      <dl className="shortcuts-list">
-        {KEYBOARD_SHORTCUTS.map((shortcut) => (
-          <div className="shortcut-row" key={shortcut.label}>
-            <dt>
-              {shortcut.keys.map((key, index) =>
-                key === "–" ? (
-                  <span className="shortcut-sep" key={`${shortcut.label}-sep-${index}`} aria-hidden="true">
-                    –
-                  </span>
-                ) : (
-                  <kbd key={`${shortcut.label}-${key}`}>{key}</kbd>
-                )
-              )}
-            </dt>
-            <dd>{shortcut.label}</dd>
-          </div>
-        ))}
-      </dl>
-    </div>
+    <dl className="shortcuts-list">
+      {KEYBOARD_SHORTCUTS.map((shortcut) => (
+        <div className="shortcut-row" key={shortcut.label}>
+          <dt>
+            {shortcut.keys.map((key, index) =>
+              key === "–" ? (
+                <span className="shortcut-sep" key={`${shortcut.label}-sep-${index}`} aria-hidden="true">
+                  –
+                </span>
+              ) : (
+                <kbd key={`${shortcut.label}-${key}`}>{key}</kbd>
+              )
+            )}
+          </dt>
+          <dd>{shortcut.label}</dd>
+        </div>
+      ))}
+    </dl>
   );
 }
