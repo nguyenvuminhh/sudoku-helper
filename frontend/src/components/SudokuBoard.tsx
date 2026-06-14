@@ -28,6 +28,7 @@ export function SudokuBoard({
   paused,
   onCellPointerDown,
   onCellPointerEnter,
+  onCellPointerUp,
   onCellClick,
   onCellContextMenu
 }: {
@@ -42,8 +43,9 @@ export function SudokuBoard({
   hintPreview: HintPreview | null;
   highlights: BoardHighlights;
   paused: boolean;
-  onCellPointerDown: (index: number, additive: boolean, button: number, x: number, y: number) => void;
+  onCellPointerDown: (index: number, additive: boolean, button: number, x: number, y: number, pointerType: string) => void;
   onCellPointerEnter: (index: number) => void;
+  onCellPointerUp: () => void;
   onCellClick: (index: number, additive: boolean) => void;
   onCellContextMenu: (index: number) => void;
 }) {
@@ -93,9 +95,17 @@ export function SudokuBoard({
             role="gridcell"
             aria-label={`Row ${row + 1}, column ${col + 1}${ariaValue}`}
             onPointerDown={(event) =>
-              onCellPointerDown(index, event.ctrlKey || event.metaKey || event.altKey, event.button, event.clientX, event.clientY)
+              onCellPointerDown(
+                index,
+                event.ctrlKey || event.metaKey || event.altKey,
+                event.button,
+                event.clientX,
+                event.clientY,
+                event.pointerType
+              )
             }
             onPointerEnter={() => onCellPointerEnter(index)}
+            onPointerUp={() => onCellPointerUp()}
             onClick={(event) => onCellClick(index, event.ctrlKey || event.metaKey || event.altKey)}
             onContextMenu={(event) => {
               event.preventDefault();

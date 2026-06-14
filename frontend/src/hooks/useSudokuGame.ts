@@ -104,6 +104,10 @@ export function useSudokuGame() {
   // press point, so a tap that jitters across a cell border is not read as a drag.
   const pointerStartRef = useRef<{ x: number; y: number } | null>(null);
   const dragArmedRef = useRef(false);
+  // Details of the active left press, used to resolve the gesture on release.
+  const pressIndexRef = useRef<number | null>(null);
+  const pressAdditiveRef = useRef(false);
+  const pressTouchRef = useRef(false);
   const rightPointerModeRef = useRef<"note" | "inactive" | null>(null);
   const rightPointerStartIndexRef = useRef<number | null>(null);
   const rightPointerMovedRef = useRef(false);
@@ -296,7 +300,7 @@ export function useSudokuGame() {
     setSelectedIndexes([]);
   }
 
-  function beginCellSelection(index: number, additive: boolean, button = 0, x = 0, y = 0) {
+  function beginCellSelection(index: number, additive: boolean, button = 0, x = 0, y = 0, pointerType = "mouse") {
     if (paused) {
       return;
     }
@@ -318,7 +322,49 @@ export function useSudokuGame() {
     dragMovedRef.current = false;
     dragArmedRef.current = false;
     pointerStartRef.current = { x, y };
+    pressIndexRef.current = index;
+    pressAdditiveRef.current = additive;
+    pressTouchRef.current = pointerType === "touch";
+
+    // Whether this press lands inside a kept multi-selection must be read before
+    // selectCellFromPointerDown rewrites the selection.
+    const onKeptSelection = quickFillMode && selectedIndexes.length > 1 && selectedIndexes.includes(index);
     selectCellFromPointerDown(index, additive);
+
+    // Touch fills on press so fast/edge taps register instantly and reliably;
+    // dragging is disabled for touch. Mouse/pen wait for release (see
+    // endCellSelection) so a click-drag can still build a multi-selection.
+    if (pressTouchRef.current && quickFillMode && !additive) {
+      if (onKeptSelection) {
+        placeQuickFillOnSelection();
+      } else {
+        placeQuickFillAt(index);
+      }
+    }
+  }
+
+  // Mouse/pen release: place the locked digit at the pressed cell when the
+  // gesture was a plain click (not a drag-select or an Alt build-up). Touch
+  // already placed on press.
+  function endCellSelection() {
+    if (paused || pressTouchRef.current || !draggingRef.current) {
+      return;
+    }
+    if (dragMovedRef.current || pressAdditiveRef.current) {
+      return;
+    }
+    if (!quickFillMode || quickFillDigit === null) {
+      return;
+    }
+    const index = pressIndexRef.current ?? selectedIndex;
+    if (index < 0) {
+      return;
+    }
+    if (selectedIndexes.length > 1 && selectedIndexes.includes(index)) {
+      placeQuickFillOnSelection();
+    } else {
+      placeQuickFillAt(index);
+    }
   }
 
   function selectCellFromPointerDown(index: number, additive: boolean) {
@@ -363,9 +409,11 @@ export function useSudokuGame() {
       }
       return;
     }
-    // Ignore cell-to-cell movement until the press has travelled far enough to
-    // count as a real drag; otherwise a jittery tap would hijack the click.
-    if (!draggingRef.current || !dragArmedRef.current) {
+    // Drag-select is a mouse/pen gesture only; touch never drags (taps place on
+    // press) so a finger sliding between cells can't hijack a tap. Movement is
+    // also ignored until the press travels past the arm threshold so a jittery
+    // click is not read as a drag.
+    if (pressTouchRef.current || !draggingRef.current || !dragArmedRef.current) {
       return;
     }
     dragMovedRef.current = true;
@@ -533,28 +581,12 @@ export function useSudokuGame() {
     applyValueToCells(selectedIndexes, value, selectedIndexes.length === 1);
   }
 
-  function clickCell(index: number, additive = false) {
-    if (paused) {
-      return;
-    }
-    // Selection is handled on pointer down; a click only places the locked
-    // quick fill digit, and never during additive or drag selection.
-    if (additive || dragMovedRef.current) {
-      dragMovedRef.current = false;
-      return;
-    }
-    if (!quickFillMode || quickFillDigit === null) {
-      return;
-    }
-
-    // A click inside a kept multi-selection marks every selected cell with the
-    // locked digit; a click on a single cell only fills that one.
-    if (selectedIndexes.length > 1 && selectedIndexes.includes(index)) {
-      placeQuickFillOnSelection();
-      return;
-    }
-
-    placeQuickFillAt(index);
+  // Both selection and quick-fill placement now happen on pointer down/drag (see
+  // beginCellSelection / dragCellSelection). The click event stays unused for the
+  // board because it is too laggy and drift-prone on touch and trackpad; keyboard
+  // activation is handled by the keydown listener instead.
+  function clickCell() {
+    dragMovedRef.current = false;
   }
 
   function rightClickCell(index: number) {
@@ -1079,6 +1111,7 @@ export function useSudokuGame() {
     rightClickCell,
     beginCellSelection,
     dragCellSelection,
+    endCellSelection,
     clearSelection,
     placeQuickFillAt,
     placeQuickFillOnSelection,
