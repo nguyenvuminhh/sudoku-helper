@@ -1,6 +1,6 @@
 "use client";
 
-import { Check, ImageIcon, Info, Loader2, Pencil, Sparkles, Upload } from "lucide-react";
+import { Check, Copy, ImageIcon, Info, Loader2, Pencil, Sparkles, Upload } from "lucide-react";
 import { useState, type DragEvent } from "react";
 
 import { GENERATED_LEVELS, type GeneratedLevel } from "../lib/constants";
@@ -23,6 +23,7 @@ export function LoadingControls({
   onLoadSample,
   onUploadClick,
   onConfirm,
+  onShare,
   onEdit,
   onDragOver,
   onDragLeave,
@@ -43,6 +44,7 @@ export function LoadingControls({
   onLoadSample: () => void;
   onUploadClick: () => void;
   onConfirm: () => void;
+  onShare: () => void;
   onEdit: () => void;
   onDragOver: (event: DragEvent<HTMLElement>) => void;
   onDragLeave: (event: DragEvent<HTMLElement>) => void;
@@ -87,6 +89,10 @@ export function LoadingControls({
         <button type="button" className="btn primary full" onClick={onConfirm} disabled={!canConfirm}>
           <Check size={17} />
           <span>Start solving</span>
+        </button>
+        <button type="button" className="btn ghost full" onClick={onShare} disabled={!canConfirm}>
+          <Copy size={16} />
+          <span>Copy share link</span>
         </button>
         <button type="button" className="btn ghost full" onClick={onEdit}>
           <Pencil size={16} />

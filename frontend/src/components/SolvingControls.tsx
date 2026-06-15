@@ -3,6 +3,7 @@
 import {
   AlignCenter,
   ArrowLeft,
+  Copy,
   Crosshair,
   ListChecks,
   MoreHorizontal,
@@ -25,12 +26,14 @@ export function SolvingControls({
   hasAnyNotes,
   quickFillMode,
   isValid,
+  canShare,
   onUndo,
   onRedo,
   onEntryModeChange,
   onToggleQuickFill,
   onToggleAllNotes,
   onCheck,
+  onShare,
   onNewPuzzle
 }: {
   busyLabel: string | null;
@@ -40,12 +43,14 @@ export function SolvingControls({
   hasAnyNotes: boolean;
   quickFillMode: boolean;
   isValid: boolean;
+  canShare: boolean;
   onUndo: () => void;
   onRedo: () => void;
   onEntryModeChange: (mode: EntryMode) => void;
   onToggleQuickFill: () => void;
   onToggleAllNotes: () => void;
   onCheck: () => void;
+  onShare: () => void;
   onNewPuzzle: () => void;
 }) {
   const busy = Boolean(busyLabel);
@@ -158,6 +163,10 @@ export function SolvingControls({
           >
             <ListChecks size={16} />
             <span>Check</span>
+          </button>
+          <button type="button" aria-label="Copy share link" disabled={!canShare} onClick={onShare}>
+            <Copy size={16} />
+            <span>Share</span>
           </button>
           <button type="button" aria-label="Return to puzzle setup" onClick={onNewPuzzle}>
             <ArrowLeft size={16} />

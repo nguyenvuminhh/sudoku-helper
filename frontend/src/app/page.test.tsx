@@ -4,6 +4,9 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { HintResponse } from "../lib/api";
+import { SAMPLE_PUZZLE } from "../lib/constants";
+import { decodePuzzleParam, encodePuzzleParam } from "../lib/share-codec";
+import { gridToPayload, parsePuzzleText } from "../lib/sudoku-state";
 
 import SudokuTutorPage from "./page";
 
@@ -76,6 +79,8 @@ describe("SudokuTutorPage", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     window.localStorage.clear();
+    window.history.pushState({}, "", "/");
+    Object.defineProperty(navigator, "clipboard", { value: undefined, configurable: true });
   });
 
   afterEach(() => {
@@ -347,6 +352,36 @@ describe("SudokuTutorPage", () => {
     expect(await screen.findByText(/generated easy puzzle/i)).toBeDefined();
     expect(within(cell(1, 1)).getByText("1")).toBeDefined();
     expect(within(cell(1, 9)).getByText("9")).toBeDefined();
+  });
+
+  it("loads a shared puzzle URL into the review step", async () => {
+    const code = encodePuzzleParam(parsePuzzleText(SAMPLE_PUZZLE));
+    window.history.pushState({}, "", `/?p=${code}`);
+
+    render(<SudokuTutorPage />);
+
+    expect(await screen.findByText(/loaded shared puzzle/i)).toBeDefined();
+    expect(screen.getByRole("button", { name: /start solving/i })).toBeDefined();
+    expect(within(cell(1, 4)).getByText("6")).toBeDefined();
+  });
+
+  it("copies a compact share link for the puzzle givens", async () => {
+    const user = userEvent.setup();
+    const writeText = vi.fn(async (_text: string) => {});
+    Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });
+    render(<SudokuTutorPage />);
+
+    await loadSampleAndConfirm(user);
+    await openMore(user);
+    await user.click(screen.getByRole("button", { name: /copy share link/i }));
+
+    expect(writeText).toHaveBeenCalledTimes(1);
+    const copiedUrl = new URL(writeText.mock.calls[0][0]);
+    const code = copiedUrl.searchParams.get("p") ?? "";
+    expect(code[0]).toBe("m");
+    expect(code.length).toBeLessThan(40);
+    expect(gridToPayload(decodePuzzleParam(code))).toBe(SAMPLE_PUZZLE);
+    expect(screen.getByText(/share link copied/i)).toBeDefined();
   });
 
   it("tints the selected cell's row, column, and box peers", async () => {

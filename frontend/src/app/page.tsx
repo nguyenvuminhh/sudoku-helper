@@ -116,12 +116,14 @@ export default function SudokuTutorPage() {
                   hasAnyNotes={game.hasAnyNotes}
                   quickFillMode={game.quickFillMode}
                   isValid={game.validation.valid}
+                  canShare={game.canSharePuzzle}
                   onUndo={game.undo}
                   onRedo={game.redo}
                   onEntryModeChange={game.changeEntryMode}
                   onToggleQuickFill={game.toggleQuickFillMode}
                   onToggleAllNotes={game.toggleAllNotes}
                   onCheck={game.check}
+                  onShare={() => void game.copyShareLink()}
                   onNewPuzzle={game.reset}
                 />
                 <Keypad
@@ -159,6 +161,7 @@ export default function SudokuTutorPage() {
               onLoadSample={game.loadSample}
               onUploadClick={imageImport.openFilePicker}
               onConfirm={game.startSolving}
+              onShare={() => void game.copyShareLink()}
               onEdit={game.reset}
               onDragOver={imageImport.handleDragOver}
               onDragLeave={imageImport.handleDragLeave}

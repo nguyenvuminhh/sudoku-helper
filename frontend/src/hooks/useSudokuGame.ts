@@ -18,6 +18,7 @@ import {
   type HintPreview
 } from "../lib/hints";
 import { parseSavedSession, serializeSession, SESSION_STORAGE_KEY } from "../lib/session";
+import { decodePuzzleParam, encodePuzzleParam } from "../lib/share-codec";
 import { formatElapsedSeconds } from "../lib/time";
 import {
   applyHintEliminationsToNotes,
@@ -33,6 +34,7 @@ import {
   createGivenMask,
   findNextCellWithValue,
   findNextInputIndex,
+  gridToPayload,
   gridsEqual,
   indexToCell,
   moveSelection,
@@ -147,6 +149,12 @@ export function useSudokuGame() {
   const hasAnyNotes = marks.corner.some((notes) => notes.length > 0) || marks.center.some((notes) => notes.length > 0);
   const activeHighlightDigit = quickFillDigit ?? (selectedIndex >= 0 ? grid[selectedIndex] : null);
   const validation = useMemo(() => validateSudokuGrid(grid), [grid]);
+  const sharePuzzleGrid = useMemo(
+    () => (isSolving ? grid.map((value, index) => (givenMask[index] ? value : null)) : [...grid]),
+    [givenMask, grid, isSolving]
+  );
+  const shareValidation = useMemo(() => validateSudokuGrid(sharePuzzleGrid), [sharePuzzleGrid]);
+  const canSharePuzzle = countFilledCells(sharePuzzleGrid) > 0 && shareValidation.valid;
   const statusMessages = validation.valid ? messages : ["Fix the highlighted conflicts before requesting a hint."];
   const conflictIndexes = useMemo(() => collectConflictIndexes(validation.conflicts), [validation]);
   const incorrectIndexes = useMemo(() => new Set(checkResult?.incorrectIndexes ?? []), [checkResult]);
@@ -182,8 +190,38 @@ export function useSudokuGame() {
     techniques: techniqueNames
   };
 
-  // Restore a saved session once on mount so a refresh never loses the game.
+  // Shared puzzle URLs take precedence over saved sessions; opening a link
+  // should show that puzzle even if this browser already has a local game.
   useEffect(() => {
+    let sharedParam: string | null = null;
+    try {
+      sharedParam = new URLSearchParams(window.location.search).get("p");
+    } catch {
+      sharedParam = null;
+    }
+
+    if (sharedParam) {
+      try {
+        const sharedGrid = decodePuzzleParam(sharedParam);
+        const sharedValidation = validateSudokuGrid(sharedGrid);
+        if (!sharedValidation.valid) {
+          setMessages(["Shared puzzle has conflicts. The link was not loaded."]);
+          return;
+        }
+        if (countFilledCells(sharedGrid) === 0) {
+          setMessages(["Shared puzzle is empty. The link was not loaded."]);
+          return;
+        }
+
+        loadPuzzle(sharedGrid, ["Loaded shared puzzle. Review the board, then start solving."]);
+        setPuzzleText(gridToPayload(sharedGrid));
+        setLowConfidence([]);
+      } catch {
+        setMessages(["Share link could not be loaded."]);
+      }
+      return;
+    }
+
     let saved;
     try {
       saved = parseSavedSession(window.localStorage.getItem(SESSION_STORAGE_KEY));
@@ -1032,6 +1070,40 @@ export function useSudokuGame() {
     setLowConfidence([]);
   }
 
+  async function copyShareLink() {
+    const shareUrl = createShareUrl();
+    if (!shareUrl) {
+      setMessages(["Add a valid puzzle before sharing."]);
+      return;
+    }
+
+    try {
+      if (typeof navigator === "undefined" || !navigator.clipboard?.writeText) {
+        throw new Error("Clipboard unavailable");
+      }
+      await navigator.clipboard.writeText(shareUrl);
+      setMessages(["Share link copied."]);
+    } catch {
+      setMessages([`Share link: ${shareUrl}`]);
+    }
+  }
+
+  function createShareUrl(): string | null {
+    if (typeof window === "undefined") {
+      return null;
+    }
+
+    const puzzleGrid = phase === "solving" ? gridRef.current.map((value, index) => (givenMask[index] ? value : null)) : gridRef.current;
+    if (countFilledCells(puzzleGrid) === 0 || !validateSudokuGrid(puzzleGrid).valid) {
+      return null;
+    }
+
+    const url = new URL(window.location.href);
+    url.searchParams.set("p", encodePuzzleParam(puzzleGrid));
+    url.hash = "";
+    return url.toString();
+  }
+
   function moveSelectionBy(direction: NavDirection, extend = false) {
     // After the selection was cleared, an arrow key re-enters the board at the
     // top-left rather than staying nowhere.
@@ -1105,6 +1177,7 @@ export function useSudokuGame() {
     redoStack,
     settings,
     setSetting,
+    canSharePuzzle,
     // actions
     pressDigit,
     clickCell,
@@ -1132,6 +1205,7 @@ export function useSudokuGame() {
     loadSample,
     reset,
     importImageFile,
+    copyShareLink,
     dismissFinish,
     notify,
     setPuzzleText,
