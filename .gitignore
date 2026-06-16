@@ -23,6 +23,9 @@ data/models/
 # corpus is tracked explicitly with git add -f.
 data/puzzles/
 
+# Local git worktrees
+.worktrees/
+
 # Local generator tools
 SukakuExplainer.jar
 tdoku/
