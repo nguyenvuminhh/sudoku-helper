@@ -1,17 +1,19 @@
 "use client";
 
-import { ChevronRight, History, Keyboard, Lightbulb, Loader2, Settings as SettingsIcon } from "lucide-react";
-import { useState } from "react";
+import { ChevronRight, History, Keyboard, Lightbulb, Loader2, Settings as SettingsIcon, Trophy } from "lucide-react";
+import { useEffect, useState } from "react";
 
 import type { Settings } from "../hooks/useSettings";
+import type { SolveRecordsState } from "../hooks/useSolveRecords";
 import type { HintResponse } from "../lib/api";
 import { HintPanel } from "./HintPanel";
 import { HistoryPanel } from "./HistoryPanel";
+import { LeaderboardPanel } from "./LeaderboardPanel";
 import { SettingsPanel } from "./SettingsPanel";
 import { ShortcutsPanel } from "./ShortcutsPanel";
 import { StatusPanel } from "./StatusPanel";
 
-type Row = "history" | "settings" | "shortcuts";
+type Row = "history" | "leaderboard" | "settings" | "shortcuts";
 
 export function SolvingPanel({
   statusMessages,
@@ -22,6 +24,8 @@ export function SolvingPanel({
   isValid,
   hintReady,
   history,
+  leaderboard,
+  leaderboardOpenToken,
   settings,
   onApplyHint,
   onHint,
@@ -35,6 +39,8 @@ export function SolvingPanel({
   isValid: boolean;
   hintReady: boolean;
   history: HintResponse[];
+  leaderboard: SolveRecordsState;
+  leaderboardOpenToken: number;
   settings: Settings;
   onApplyHint: () => void;
   onHint: () => void;
@@ -42,6 +48,12 @@ export function SolvingPanel({
 }) {
   const [open, setOpen] = useState<Row | null>(null);
   const toggle = (row: Row) => setOpen((current) => (current === row ? null : row));
+
+  useEffect(() => {
+    if (leaderboardOpenToken > 0) {
+      setOpen("leaderboard");
+    }
+  }, [leaderboardOpenToken]);
 
   return (
     <div className="panel">
@@ -83,6 +95,31 @@ export function SolvingPanel({
           {open === "history" ? (
             <div className="disc-body">
               <HistoryPanel history={history} />
+            </div>
+          ) : null}
+        </section>
+
+        <section className="disc-section">
+          <button
+            type="button"
+            className="disc-row"
+            aria-expanded={open === "leaderboard"}
+            onClick={() => toggle("leaderboard")}
+          >
+            <span className="disc-l">
+              <Trophy size={15} />
+              Leaderboard
+            </span>
+            <span className="disc-r">
+              {leaderboard.leaderboardRows.length > 0 ? (
+                <span className="disc-c">{leaderboard.leaderboardRows.length}</span>
+              ) : null}
+              <ChevronRight className="disc-chevron" size={15} />
+            </span>
+          </button>
+          {open === "leaderboard" ? (
+            <div className="disc-body">
+              <LeaderboardPanel state={leaderboard} />
             </div>
           ) : null}
         </section>

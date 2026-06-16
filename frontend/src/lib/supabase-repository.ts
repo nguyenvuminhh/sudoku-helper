@@ -1,3 +1,5 @@
+import type { LeaderboardDifficulty, SolveRecordInput } from "./leaderboard";
+
 export type AccountUser = {
   id: string;
   email: string | null;
@@ -45,6 +47,42 @@ export type SupabaseProfileClient = {
 
 export type SupabaseAccountClient = SupabaseAuthClient & SupabaseProfileClient;
 
+export type SupabaseSolveClient = {
+  from?: (table: string) => unknown;
+  rpc?: (functionName: string, args: Record<string, unknown>) => SupabaseAsyncResult<LeaderboardRpcRow[] | null>;
+};
+
+export type SolveRecord = {
+  id: string;
+  userId: string;
+  puzzleFingerprint: string;
+  difficulty: LeaderboardDifficulty;
+  elapsedSeconds: number;
+  hintsUsed: number;
+  checksUsed: number;
+  givens: number;
+  filledByUser: number;
+  techniques: string[];
+  completedAt: string;
+};
+
+export type LeaderboardRow = {
+  rank: number;
+  profileId: string;
+  displayName: string;
+  difficulty: LeaderboardDifficulty;
+  elapsedSeconds: number;
+  hintsUsed: number;
+  checksUsed: number;
+  completedAt: string;
+};
+
+export type PersonalStats = {
+  completedSolves: number;
+  bestTimeSeconds: number | null;
+  recent: SolveRecord[];
+};
+
 type SupabaseProfileQuery = {
   select: (columns?: string) => {
     eq: (column: string, value: string) => {
@@ -77,7 +115,51 @@ type ProfileInsert = {
   avatar_seed: string;
 };
 
+type SolveRecordRow = {
+  id: string;
+  user_id: string;
+  puzzle_fingerprint: string;
+  difficulty: string;
+  elapsed_seconds: number;
+  hints_used: number;
+  checks_used: number;
+  givens: number;
+  filled_by_user: number;
+  techniques: string[];
+  completed_at: string;
+};
+
+type LeaderboardRpcRow = {
+  rank: number;
+  profile_id: string;
+  display_name: string;
+  difficulty: string;
+  elapsed_seconds: number;
+  hints_used: number;
+  checks_used: number;
+  completed_at: string;
+};
+
+type SupabaseSolveRecordsQuery = {
+  insert: (payload: SolveRecordInput) => {
+    select: (columns?: string) => {
+      single: () => SupabaseAsyncResult<SolveRecordRow>;
+    };
+  };
+  select: (columns?: string) => {
+    eq: (column: string, value: string) => {
+      eq: (column: string, value: string) => {
+        order: (column: string, options: { ascending: boolean }) => {
+          limit: (count: number) => SupabaseAsyncResult<SolveRecordRow[] | null>;
+        };
+      };
+    };
+  };
+};
+
 const PROFILE_COLUMNS = "id, display_name, avatar_seed";
+const SOLVE_RECORD_COLUMNS =
+  "id, user_id, puzzle_fingerprint, difficulty, elapsed_seconds, hints_used, checks_used, givens, filled_by_user, techniques, completed_at";
 
 export async function ensureAnonymousSession(client: SupabaseAuthClient): Promise<AccountUser> {
   const sessionResult = await client.auth.getSession();
@@ -146,8 +228,62 @@ export async function signOut(client: SupabaseAuthClient): Promise<void> {
   throwIfError(result.error, "Unable to sign out");
 }
 
+export async function saveSolveRecord(client: SupabaseSolveClient, record: SolveRecordInput): Promise<SolveRecord> {
+  const result = await getSolveRecordsQuery(client).insert(record).select(SOLVE_RECORD_COLUMNS).single();
+  throwIfError(result.error, "Unable to save solve");
+  return mapSolveRecord(result.data);
+}
+
+export async function fetchDifficultyLeaderboard(
+  client: SupabaseSolveClient,
+  difficulty: LeaderboardDifficulty,
+  limit = 20
+): Promise<LeaderboardRow[]> {
+  if (!client.rpc) {
+    throw new Error("Leaderboard storage is unavailable");
+  }
+
+  const result = await client.rpc("difficulty_leaderboard", {
+    selected_difficulty: difficulty,
+    row_limit: limit
+  });
+  throwIfError(result.error, "Unable to load leaderboard");
+  return (result.data ?? []).map(mapLeaderboardRow);
+}
+
+export async function fetchPersonalStats(
+  client: SupabaseSolveClient,
+  userId: string,
+  difficulty: LeaderboardDifficulty
+): Promise<PersonalStats> {
+  const result = await getSolveRecordsQuery(client)
+    .select(SOLVE_RECORD_COLUMNS)
+    .eq("user_id", userId)
+    .eq("difficulty", difficulty)
+    .order("completed_at", { ascending: false })
+    .limit(20);
+  throwIfError(result.error, "Unable to load personal stats");
+
+  const recent = (result.data ?? []).map(mapSolveRecord);
+  const bestTimeSeconds =
+    recent.length > 0 ? Math.min(...recent.map((record) => record.elapsedSeconds)) : null;
+
+  return {
+    completedSolves: recent.length,
+    bestTimeSeconds,
+    recent
+  };
+}
+
 function getProfilesQuery(client: SupabaseProfileClient): SupabaseProfileQuery {
   return client.from("profiles");
+}
+
+function getSolveRecordsQuery(client: SupabaseSolveClient): SupabaseSolveRecordsQuery {
+  if (!client.from) {
+    throw new Error("Solve record storage is unavailable");
+  }
+  return client.from("solve_records") as SupabaseSolveRecordsQuery;
 }
 
 function mapUser(user: SupabaseAuthUser): AccountUser {
@@ -163,6 +299,35 @@ function mapProfile(row: ProfileRow): UserProfile {
     id: row.id,
     displayName: row.display_name,
     avatarSeed: row.avatar_seed
+  };
+}
+
+function mapSolveRecord(row: SolveRecordRow): SolveRecord {
+  return {
+    id: row.id,
+    userId: row.user_id,
+    puzzleFingerprint: row.puzzle_fingerprint,
+    difficulty: row.difficulty as LeaderboardDifficulty,
+    elapsedSeconds: row.elapsed_seconds,
+    hintsUsed: row.hints_used,
+    checksUsed: row.checks_used,
+    givens: row.givens,
+    filledByUser: row.filled_by_user,
+    techniques: row.techniques,
+    completedAt: row.completed_at
+  };
+}
+
+function mapLeaderboardRow(row: LeaderboardRpcRow): LeaderboardRow {
+  return {
+    rank: row.rank,
+    profileId: row.profile_id,
+    displayName: row.display_name,
+    difficulty: row.difficulty as LeaderboardDifficulty,
+    elapsedSeconds: row.elapsed_seconds,
+    hintsUsed: row.hints_used,
+    checksUsed: row.checks_used,
+    completedAt: row.completed_at
   };
 }
 
