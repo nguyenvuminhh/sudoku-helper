@@ -318,6 +318,13 @@ h3 {
   gap: 12px;
 }
 
+.bs-rating {
+  background: var(--teal-soft);
+  border-radius: 999px;
+  color: var(--teal-deep);
+  padding: 4px 8px;
+}
+
 .bs-pause {
   background: transparent;
   border: 0;
@@ -825,6 +832,60 @@ h3 {
 }
 
 .more-pop button.on svg {
+  color: var(--teal-deep);
+}
+
+.puzzle-actions button.danger {
+  color: var(--coral);
+}
+
+.puzzle-actions button.danger svg {
+  color: var(--coral);
+}
+
+.desktop-actions {
+  display: none;
+}
+
+.desktop-actions button {
+  align-items: center;
+  background: var(--panel-elev);
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  color: var(--ink);
+  display: inline-flex;
+  font-size: 0.84rem;
+  font-weight: 700;
+  gap: 8px;
+  justify-content: center;
+  min-height: 40px;
+  min-width: 0;
+  padding: 0 10px;
+  transition: border-color 140ms ease, background 140ms ease, color 140ms ease;
+}
+
+.desktop-actions button:hover:not(:disabled) {
+  background: var(--track);
+  border-color: var(--teal);
+}
+
+.desktop-actions button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.desktop-actions button.on {
+  background: var(--teal-soft);
+  border-color: var(--teal);
+  color: var(--teal-deep);
+}
+
+.desktop-actions button svg {
+  color: var(--muted);
+  flex: 0 0 auto;
+}
+
+.desktop-actions button.on svg {
   color: var(--teal-deep);
 }
 
@@ -1708,6 +1769,22 @@ kbd {
   }
 
   .panel-col::-webkit-scrollbar {
+    display: none;
+  }
+
+  .desktop-actions {
+    display: grid;
+    gap: 7px;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .desktop-actions button.danger {
+    grid-column: 1 / -1;
+  }
+
+  .mobile-more-divider,
+  .mobile-more-trigger,
+  .more-pop {
     display: none;
   }
 }

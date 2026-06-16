@@ -2,13 +2,8 @@
 
 import {
   AlignCenter,
-  ArrowLeft,
-  Copy,
-  Crosshair,
-  ListChecks,
   MoreHorizontal,
   Palette,
-  Pen,
   Pencil,
   PenLine,
   Redo2,
@@ -17,6 +12,7 @@ import {
 import { useEffect, useRef, useState } from "react";
 
 import type { EntryMode } from "../lib/constants";
+import { PuzzleActions } from "./PuzzleActions";
 
 export function SolvingControls({
   busyLabel,
@@ -120,11 +116,11 @@ export function SolvingControls({
         ))}
       </div>
 
-      <div className="eb-div" aria-hidden="true" />
+      <div className="eb-div mobile-more-divider" aria-hidden="true" />
 
       <button
         type="button"
-        className={moreOpen ? "eb-btn more on" : "eb-btn more"}
+        className={moreOpen ? "eb-btn more mobile-more-trigger on" : "eb-btn more mobile-more-trigger"}
         aria-label="More tools"
         aria-expanded={moreOpen}
         onClick={() => setMoreOpen((open) => !open)}
@@ -133,46 +129,19 @@ export function SolvingControls({
       </button>
 
       {moreOpen ? (
-        <div className="more-pop" aria-label="More tools">
-          <button
-            type="button"
-            className={quickFillMode ? "on" : ""}
-            aria-pressed={quickFillMode}
-            aria-label="Quick fill"
-            onClick={onToggleQuickFill}
-          >
-            <Crosshair size={16} />
-            <span>Quick fill</span>
-          </button>
-          <button
-            type="button"
-            className={hasAnyNotes ? "on" : ""}
-            aria-pressed={hasAnyNotes}
-            aria-label="Auto fill"
-            disabled={!hasAnyNotes && !isValid}
-            onClick={onToggleAllNotes}
-          >
-            <Pen size={16} />
-            <span>Auto fill</span>
-          </button>
-          <button
-            type="button"
-            aria-label="Check the puzzle for wrong numbers"
-            disabled={busy || !isValid}
-            onClick={onCheck}
-          >
-            <ListChecks size={16} />
-            <span>Check</span>
-          </button>
-          <button type="button" aria-label="Copy share link" disabled={!canShare} onClick={onShare}>
-            <Copy size={16} />
-            <span>Share</span>
-          </button>
-          <button type="button" aria-label="Return to puzzle setup" onClick={onNewPuzzle}>
-            <ArrowLeft size={16} />
-            <span>New puzzle</span>
-          </button>
-        </div>
+        <PuzzleActions
+          variant="mobile"
+          busyLabel={busyLabel}
+          hasAnyNotes={hasAnyNotes}
+          quickFillMode={quickFillMode}
+          isValid={isValid}
+          canShare={canShare}
+          onToggleQuickFill={onToggleQuickFill}
+          onToggleAllNotes={onToggleAllNotes}
+          onCheck={onCheck}
+          onShare={onShare}
+          onQuit={onNewPuzzle}
+        />
       ) : null}
     </div>
   );

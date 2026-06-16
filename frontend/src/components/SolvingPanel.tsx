@@ -7,6 +7,7 @@ import type { Settings } from "../hooks/useSettings";
 import type { HintResponse } from "../lib/api";
 import { HintPanel } from "./HintPanel";
 import { HistoryPanel } from "./HistoryPanel";
+import { PuzzleActions } from "./PuzzleActions";
 import { SettingsPanel } from "./SettingsPanel";
 import { ShortcutsPanel } from "./ShortcutsPanel";
 import { StatusPanel } from "./StatusPanel";
@@ -19,10 +20,18 @@ export function SolvingPanel({
   currentHint,
   canApplyCurrentHint,
   filledCount,
+  hasAnyNotes,
+  quickFillMode,
   isValid,
+  canShare,
   hintReady,
   history,
   settings,
+  onToggleQuickFill,
+  onToggleAllNotes,
+  onCheck,
+  onShare,
+  onQuit,
   onApplyHint,
   onHint,
   onSettingChange
@@ -32,10 +41,18 @@ export function SolvingPanel({
   currentHint: HintResponse | null;
   canApplyCurrentHint: boolean;
   filledCount: number;
+  hasAnyNotes: boolean;
+  quickFillMode: boolean;
   isValid: boolean;
+  canShare: boolean;
   hintReady: boolean;
   history: HintResponse[];
   settings: Settings;
+  onToggleQuickFill: () => void;
+  onToggleAllNotes: () => void;
+  onCheck: () => void;
+  onShare: () => void;
+  onQuit: () => void;
   onApplyHint: () => void;
   onHint: () => void;
   onSettingChange: <K extends keyof Settings>(key: K, value: Settings[K]) => void;
@@ -45,6 +62,20 @@ export function SolvingPanel({
 
   return (
     <div className="panel">
+      <PuzzleActions
+        variant="desktop"
+        busyLabel={busyLabel}
+        hasAnyNotes={hasAnyNotes}
+        quickFillMode={quickFillMode}
+        isValid={isValid}
+        canShare={canShare}
+        onToggleQuickFill={onToggleQuickFill}
+        onToggleAllNotes={onToggleAllNotes}
+        onCheck={onCheck}
+        onShare={onShare}
+        onQuit={onQuit}
+      />
+
       <StatusPanel busyLabel={busyLabel} messages={statusMessages} />
 
       <HintPanel canApplyHint={canApplyCurrentHint} hint={currentHint} onApplyHint={onApplyHint} />

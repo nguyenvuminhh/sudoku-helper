@@ -5,6 +5,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import {
   requestGeneratedPuzzle,
   recognizeImage,
+  type GeneratedPuzzleResponse,
   type HintResponse
 } from "../lib/api";
 import {
@@ -14,6 +15,7 @@ import {
   type EntryMode,
   type GeneratedLevel,
   type NoteEntryMode,
+  type PuzzleRating,
   type TutorPhase
 } from "../lib/constants";
 import {
@@ -102,6 +104,7 @@ export function useSudokuGame() {
   const [quickFillDigit, setQuickFillDigit] = useState<number | null>(null);
   const [puzzleText, setPuzzleText] = useState("");
   const [generatedLevel, setGeneratedLevel] = useState<GeneratedLevel>("easy");
+  const [puzzleRating, setPuzzleRating] = useState<PuzzleRating | null>(null);
   const [paused, setPaused] = useState(false);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [solvedAnnounced, setSolvedAnnounced] = useState(false);
@@ -879,7 +882,7 @@ export function useSudokuGame() {
     try {
       const generated = await requestGeneratedPuzzle(generatedLevel);
       const nextGrid = parsePuzzleText(generated.puzzle);
-      loadPuzzle(nextGrid, [generatedPuzzleMessage(generated)]);
+      loadPuzzle(nextGrid, [generatedPuzzleMessage(generated)], generatedPuzzleRating(generated));
       setPuzzleText(generated.puzzle);
       setLowConfidence([]);
     } catch (error) {
@@ -889,12 +892,13 @@ export function useSudokuGame() {
     }
   }
 
-  function loadPuzzle(nextGrid: SudokuGrid, nextMessages: string[]) {
+  function loadPuzzle(nextGrid: SudokuGrid, nextMessages: string[], nextPuzzleRating: PuzzleRating | null = null) {
     resetSolveProgress();
     setGrid(nextGrid);
     setGivenMask(createGivenMask(createEmptyGrid()));
     setPhase("loading");
     setQuickFillMode(false);
+    setPuzzleRating(nextPuzzleRating);
     setHistory([]);
     selectOnly(selectedIndex);
     setMessages(nextMessages);
@@ -1037,6 +1041,7 @@ export function useSudokuGame() {
     settings,
     setSetting,
     canSharePuzzle,
+    puzzleRating,
     // actions
     pressDigit,
     clickCell,
@@ -1070,4 +1075,15 @@ export function useSudokuGame() {
     setPuzzleText,
     setGeneratedLevel
   };
+
+
+function generatedPuzzleRating(generated: GeneratedPuzzleResponse): PuzzleRating | null {
+  if (Number.isFinite(generated.se_rating) && generated.se_rating > 0) {
+    return { label: `SE ${generated.se_rating.toFixed(1)}` };
+  }
+  if (generated.level.name) {
+    return { label: generated.level.name };
+  }
+  return null;
 }
+

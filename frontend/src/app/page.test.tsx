@@ -55,15 +55,15 @@ async function loadSampleAndConfirm(user: ReturnType<typeof userEvent.setup>) {
   await user.click(screen.getByRole("button", { name: /start solving/i }));
 }
 
-// Advanced actions (quick fill, auto fill, check, new puzzle) live behind the
-// entry toolbar's ⋯ More popover.
+// Mobile advanced actions live behind the entry toolbar's ⋯ More popover.
 async function openMore(user: ReturnType<typeof userEvent.setup>) {
   await user.click(screen.getByRole("button", { name: /more tools/i }));
+  return screen.getByRole("group", { name: /mobile puzzle actions/i });
 }
 
 async function toggleQuickFill(user: ReturnType<typeof userEvent.setup>) {
-  await openMore(user);
-  await user.click(screen.getByRole("button", { name: /^quick fill$/i }));
+  const menu = await openMore(user);
+  await user.click(within(menu).getByRole("button", { name: /^quick fill$/i }));
 }
 
 function rightClick(target: HTMLElement): boolean {
@@ -125,8 +125,8 @@ describe("SudokuTutorPage", () => {
     // R1C4 holds the sample given 6 and is announced as a loaded clue.
     expect(cell(1, 4).getAttribute("aria-label")).toContain("loaded clue");
     // Quick fill stays on by default after confirming.
-    await openMore(user);
-    expect(screen.getByRole("button", { name: /^quick fill$/i }).getAttribute("aria-pressed")).toBe("true");
+    const menu = await openMore(user);
+    expect(within(menu).getByRole("button", { name: /^quick fill$/i }).getAttribute("aria-pressed")).toBe("true");
   });
 
   it("adds corner notes in corner mode", async () => {
@@ -328,8 +328,8 @@ describe("SudokuTutorPage", () => {
     render(<SudokuTutorPage />);
 
     await loadSampleAndConfirm(user);
-    await openMore(user);
-    await user.click(screen.getByRole("button", { name: /check the puzzle/i }));
+    const menu = await openMore(user);
+    await user.click(within(menu).getByRole("button", { name: /check the puzzle/i }));
 
     expect(screen.getByText(/no mistakes so far/i)).toBeDefined();
   });
@@ -383,8 +383,14 @@ describe("SudokuTutorPage", () => {
     await user.click(screen.getByRole("button", { name: /generate puzzle/i }));
 
     expect(await screen.findByText(/generated easy puzzle/i)).toBeDefined();
+    expect(screen.getByText("Rating")).toBeDefined();
+    expect(screen.getByText("SE 1.2")).toBeDefined();
     expect(within(cell(1, 1)).getByText("1")).toBeDefined();
     expect(within(cell(1, 9)).getByText("9")).toBeDefined();
+
+    await user.click(screen.getByRole("button", { name: /start solving/i }));
+
+    expect(screen.getByLabelText(/puzzle rating SE 1.2/i)).toBeDefined();
   });
 
   it("offers the full SE bucket level set when generating puzzles", async () => {
@@ -429,8 +435,8 @@ describe("SudokuTutorPage", () => {
     render(<SudokuTutorPage />);
 
     await loadSampleAndConfirm(user);
-    await openMore(user);
-    await user.click(screen.getByRole("button", { name: /copy share link/i }));
+    const menu = await openMore(user);
+    await user.click(within(menu).getByRole("button", { name: /copy share link/i }));
 
     expect(writeText).toHaveBeenCalledTimes(1);
     const copiedUrl = new URL(writeText.mock.calls[0][0]);
@@ -549,5 +555,26 @@ describe("SudokuTutorPage", () => {
     // The entry toolbar lives in the board column, not the rail.
     expect(within(rail).queryByLabelText(/solving controls/i)).toBeNull();
     expect(screen.getByLabelText(/solving controls/i)).toBeDefined();
+  });
+
+  it("keeps advanced actions in the desktop rail and mobile more menu", async () => {
+    const user = userEvent.setup();
+    render(<SudokuTutorPage />);
+
+    await loadSampleAndConfirm(user);
+
+    const rail = screen.getByRole("complementary", { name: /hint explanation/i });
+    const desktopActions = within(rail).getByRole("group", { name: /desktop puzzle actions/i });
+    expect(within(desktopActions).getByRole("button", { name: /^quick fill$/i })).toBeDefined();
+    expect(within(desktopActions).getByRole("button", { name: /^auto fill$/i })).toBeDefined();
+    expect(within(desktopActions).getByRole("button", { name: /check the puzzle/i })).toBeDefined();
+    expect(within(desktopActions).getByRole("button", { name: /copy share link/i })).toBeDefined();
+    expect(within(desktopActions).getByRole("button", { name: /quit to puzzle setup/i }).className).toContain("danger");
+
+    const menu = await openMore(user);
+    expect(within(menu).getByRole("button", { name: /^quick fill$/i })).toBeDefined();
+    expect(within(menu).getByRole("button", { name: /copy share link/i })).toBeDefined();
+    expect(within(menu).getByRole("button", { name: /quit to puzzle setup/i }).className).toContain("danger");
+    expect(within(menu).queryByRole("button", { name: /new puzzle/i })).toBeNull();
   });
 });

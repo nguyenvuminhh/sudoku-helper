@@ -22,6 +22,9 @@ export type GeneratedLevel =
 export type EntryMode = "value" | "corner" | "center" | "color";
 /** The two pencil-mark layers (a subset of EntryMode). */
 export type NoteEntryMode = Extract<EntryMode, "corner" | "center">;
+export type PuzzleRating = {
+  label: string;
+};
 
 export function isNoteEntryMode(mode: EntryMode): mode is NoteEntryMode {
   return mode === "corner" || mode === "center";

@@ -3,7 +3,7 @@
 import { Check, Copy, ImageIcon, Info, Loader2, Pencil, Sparkles, Upload } from "lucide-react";
 import { useState, type DragEvent } from "react";
 
-import { GENERATED_LEVELS, type GeneratedLevel } from "../lib/constants";
+import { GENERATED_LEVELS, type GeneratedLevel, type PuzzleRating } from "../lib/constants";
 
 type Tab = "generate" | "import";
 
@@ -11,6 +11,7 @@ export function LoadingControls({
   puzzleText,
   puzzleTextLength,
   filledCount,
+  puzzleRating,
   generatedLevel,
   busyLabel,
   canConfirm,
@@ -32,6 +33,7 @@ export function LoadingControls({
   puzzleText: string;
   puzzleTextLength: number;
   filledCount: number;
+  puzzleRating: PuzzleRating | null;
   generatedLevel: GeneratedLevel;
   busyLabel: string | null;
   canConfirm: boolean;
@@ -82,8 +84,8 @@ export function LoadingControls({
             <dd>{81 - filledCount}</dd>
           </div>
           <div>
-            <dt>Difficulty</dt>
-            <dd>{level?.label ?? "—"}</dd>
+            <dt>{puzzleRating ? "Rating" : "Difficulty"}</dt>
+            <dd>{puzzleRating?.label ?? level?.label ?? "—"}</dd>
           </div>
         </dl>
         <button type="button" className="btn primary full" onClick={onConfirm} disabled={!canConfirm}>
