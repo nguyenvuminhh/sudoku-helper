@@ -1,6 +1,6 @@
 "use client";
 
-import { FastForward, Hash } from "lucide-react";
+import { FastForward, Hash, ListChecks } from "lucide-react";
 
 import type { Settings } from "../hooks/useSettings";
 import { SwitchRow } from "./SwitchRow";
@@ -25,6 +25,12 @@ export function SettingsPanel({
         icon={<FastForward size={16} />}
         label="Auto-advance quick fill digit"
         onClick={() => onSettingChange("autoAdvanceDigit", !settings.autoAdvanceDigit)}
+      />
+      <SwitchRow
+        active={settings.autoCheck}
+        icon={<ListChecks size={16} />}
+        label="Auto-check entered values"
+        onClick={() => onSettingChange("autoCheck", !settings.autoCheck)}
       />
     </div>
   );

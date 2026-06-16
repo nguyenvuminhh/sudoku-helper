@@ -9,11 +9,14 @@ export type Settings = {
   showRemainingCounts: boolean;
   /** Jump quick fill to the next incomplete digit when one is finished. */
   autoAdvanceDigit: boolean;
+  /** Check value entries against the puzzle solution as they are placed. */
+  autoCheck: boolean;
 };
 
 const DEFAULT_SETTINGS: Settings = {
   showRemainingCounts: true,
-  autoAdvanceDigit: true
+  autoAdvanceDigit: true,
+  autoCheck: false
 };
 
 export function useSettings() {
@@ -30,7 +33,8 @@ export function useSettings() {
         showRemainingCounts:
           typeof stored.showRemainingCounts === "boolean" ? stored.showRemainingCounts : DEFAULT_SETTINGS.showRemainingCounts,
         autoAdvanceDigit:
-          typeof stored.autoAdvanceDigit === "boolean" ? stored.autoAdvanceDigit : DEFAULT_SETTINGS.autoAdvanceDigit
+          typeof stored.autoAdvanceDigit === "boolean" ? stored.autoAdvanceDigit : DEFAULT_SETTINGS.autoAdvanceDigit,
+        autoCheck: typeof stored.autoCheck === "boolean" ? stored.autoCheck : DEFAULT_SETTINGS.autoCheck
       });
     } catch {
       // Ignore corrupt settings and keep defaults.

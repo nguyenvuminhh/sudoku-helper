@@ -1,6 +1,6 @@
 "use client";
 
-import { Check, CircleAlert, Pause, PartyPopper, Play, Timer } from "lucide-react";
+import { Check, CircleAlert, Gauge, Pause, PartyPopper, Play, Timer } from "lucide-react";
 import { useState } from "react";
 
 import { FinishDialog } from "../components/FinishDialog";
@@ -50,6 +50,12 @@ export default function SudokuTutorPage() {
                   {conflicts > 0 ? `${conflicts} ${conflicts === 1 ? "conflict" : "conflicts"}` : "No conflicts"}
                 </span>
                 <span className="bs-right">
+                  {game.puzzleRating ? (
+                    <span className="bs-rating" aria-label={`Puzzle rating ${game.puzzleRating.label}`}>
+                      <Gauge size={14} />
+                      {game.puzzleRating.label}
+                    </span>
+                  ) : null}
                   <span className="bs-timer" role="timer" aria-label={`Elapsed time ${formatElapsedSeconds(game.elapsedSeconds)}`}>
                     <Timer size={14} />
                     {formatElapsedSeconds(game.elapsedSeconds)}
@@ -155,6 +161,7 @@ export default function SudokuTutorPage() {
               puzzleText={game.puzzleText}
               puzzleTextLength={game.puzzleText.replace(/[^0-9.]/g, "").length}
               filledCount={game.filledCount}
+              puzzleRating={game.puzzleRating}
               generatedLevel={game.generatedLevel}
               busyLabel={game.busyLabel}
               canConfirm={game.filledCount > 0 && game.validation.valid}
@@ -180,12 +187,20 @@ export default function SudokuTutorPage() {
               currentHint={game.currentHint}
               canApplyCurrentHint={game.canApplyCurrentHint}
               filledCount={game.filledCount}
+              hasAnyNotes={game.hasAnyNotes}
+              quickFillMode={game.quickFillMode}
               isValid={game.validation.valid}
+              canShare={game.canSharePuzzle}
               hintReady={game.hintReady}
               history={game.history}
               leaderboard={solveRecords}
               leaderboardOpenToken={leaderboardOpenToken}
               settings={game.settings}
+              onToggleQuickFill={game.toggleQuickFillMode}
+              onToggleAllNotes={game.toggleAllNotes}
+              onCheck={game.check}
+              onShare={() => void game.copyShareLink()}
+              onQuit={game.reset}
               onApplyHint={game.applyHint}
               onHint={() => void game.hint()}
               onSettingChange={game.setSetting}
