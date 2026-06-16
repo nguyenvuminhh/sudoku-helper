@@ -12,6 +12,7 @@ import { TopBar } from "../components/TopBar";
 import { useClickOutsideBoard } from "../hooks/useClickOutsideBoard";
 import { useImageImport } from "../hooks/useImageImport";
 import { useKeyboardShortcuts } from "../hooks/useKeyboardShortcuts";
+import { useSupabaseAccount } from "../hooks/useSupabaseAccount";
 import { useSudokuGame } from "../hooks/useSudokuGame";
 import { useTheme } from "../hooks/useTheme";
 import { formatElapsedSeconds } from "../lib/time";
@@ -19,6 +20,7 @@ import { formatElapsedSeconds } from "../lib/time";
 export default function SudokuTutorPage() {
   const game = useSudokuGame();
   const { theme, toggleTheme } = useTheme();
+  const account = useSupabaseAccount();
   const imageImport = useImageImport(game);
   useKeyboardShortcuts(game);
   useClickOutsideBoard(game);
@@ -28,7 +30,7 @@ export default function SudokuTutorPage() {
 
   return (
     <main className="app-shell">
-      <TopBar theme={theme} onToggleTheme={toggleTheme} />
+      <TopBar theme={theme} account={account} onToggleTheme={toggleTheme} />
 
       <div className="stage">
         <section className="board-col" aria-label="Sudoku board">

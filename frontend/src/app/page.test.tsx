@@ -99,6 +99,13 @@ describe("SudokuTutorPage", () => {
     expect(screen.getByText(/enter a puzzle on the board or upload/i)).toBeDefined();
   });
 
+  it("starts in guest mode without blocking puzzle setup", () => {
+    render(<SudokuTutorPage />);
+
+    expect(screen.getByRole("button", { name: /guest account/i })).toBeDefined();
+    expect(screen.getByRole("heading", { name: /start a puzzle/i })).toBeDefined();
+  });
+
   it("types digits into the board and advances to the next empty cell", async () => {
     const user = userEvent.setup();
     render(<SudokuTutorPage />);
