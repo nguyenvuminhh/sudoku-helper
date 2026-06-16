@@ -10,10 +10,14 @@ binding and the build pipeline; the compiled artifacts live in
 `bindings.cpp` exports a single embind function:
 
 ```cpp
-std::string getHint(const std::string& puzzle);
+std::string getHint(const std::string& puzzle, const std::string& candidates);
 ```
 
 - `puzzle` — 81 characters, digits `1`–`9` for givens, `0` or `.` for empty cells.
+- `candidates` — optional pencil marks so the hint respects work the player has
+  already done: 81 cells separated by `|`, each cell a run of its candidate
+  digits (`""` for filled cells), e.g. `"|159|3|..."`. Pass `""` to derive full
+  candidates from the values.
 - returns a JSON string describing the **next logical step**, the literal
   `null` when there is no logical step (solved, or only guessing would help), or
   `{"error":"invalid_format"|"unsolvable"}`.

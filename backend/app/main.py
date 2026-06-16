@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import os
-from dataclasses import asdict
 from pathlib import Path
 from typing import Any
 
@@ -21,7 +20,6 @@ DEFAULT_STATIC_DIR = PROJECT_ROOT / "frontend" / "out"
 
 class GridRequest(BaseModel):
     grid: str | list[int | str | None]
-    candidates: dict[str, list[int | str]] | None = None
 
 
 class GenerateRequest(BaseModel):

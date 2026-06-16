@@ -88,6 +88,8 @@ class PublicReleaseFilesTests(unittest.TestCase):
             "libvips",
             "LGPL-3.0-or-later",
             "Ukodus sudoku-core",
+            "l2sg",
+            "https://github.com/rafaelfassi/l2sg",
             "legal advice",
         ]
 

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Iterable, Mapping
+from typing import Iterable
 
 DIGITS = set(range(1, 10))
 
@@ -118,45 +118,3 @@ def candidates_for(grid: list[int], index: int) -> set[int]:
 
 def candidate_map(grid: list[int]) -> dict[int, set[int]]:
     return {index: candidates_for(grid, index) for index, value in enumerate(grid) if value == 0}
-
-
-def parse_candidate_map(grid: list[int], value: Mapping[str | int, Iterable[int | str]]) -> dict[int, set[int]]:
-    candidates = candidate_map(grid)
-    for raw_index, raw_digits in value.items():
-        try:
-            index = int(raw_index)
-        except (TypeError, ValueError) as exc:
-            raise ValueError(f"Candidate cell {raw_index!r} must be an index from 0 to 80.") from exc
-
-        if index < 0 or index > 80:
-            raise ValueError(f"Candidate cell {index} must be an index from 0 to 80.")
-
-        try:
-            raw_digit_list = list(raw_digits)
-        except TypeError as exc:
-            raise ValueError(f"Candidates for cell {index + 1} must be a list of digits.") from exc
-
-        digits: set[int] = set()
-        for raw_digit in raw_digit_list:
-            try:
-                digit = int(raw_digit)
-            except (TypeError, ValueError) as exc:
-                raise ValueError(f"Candidates for cell {index + 1} must be digits from 1 to 9.") from exc
-            if digit not in DIGITS:
-                raise ValueError(f"Candidates for cell {index + 1} must be digits from 1 to 9.")
-            digits.add(digit)
-
-        if grid[index]:
-            if digits:
-                raise ValueError(f"Filled cell {index + 1} cannot have candidates.")
-            continue
-
-        illegal = digits - candidates[index]
-        if illegal:
-            cell = coord(index)
-            illegal_digits = ", ".join(str(digit) for digit in sorted(illegal))
-            raise ValueError(f"R{cell['row']}C{cell['col']} cannot contain candidate {illegal_digits}.")
-
-        candidates[index] = digits
-
-    return candidates
