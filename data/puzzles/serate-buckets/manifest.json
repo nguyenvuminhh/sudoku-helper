@@ -1,0 +1,92 @@
+{
+  "accepted_records": 78213,
+  "buckets": [
+    {
+      "id": "easy",
+      "label": "Easy",
+      "lower": 1.0,
+      "upper": 2.0
+    },
+    {
+      "id": "medium",
+      "label": "Medium",
+      "lower": 2.0,
+      "upper": 3.0
+    },
+    {
+      "id": "hard",
+      "label": "Hard",
+      "lower": 3.0,
+      "upper": 4.0
+    },
+    {
+      "id": "expert",
+      "label": "Expert",
+      "lower": 4.0,
+      "upper": 5.0
+    },
+    {
+      "id": "master",
+      "label": "Master",
+      "lower": 5.0,
+      "upper": 6.0
+    },
+    {
+      "id": "extreme",
+      "label": "Extreme",
+      "lower": 6.0,
+      "upper": 7.0
+    },
+    {
+      "id": "advanced_7_8",
+      "label": "Advanced 7-8",
+      "lower": 7.0,
+      "upper": 8.0
+    },
+    {
+      "id": "advanced_8_plus",
+      "label": "Advanced 8+",
+      "lower": 8.0,
+      "upper": null
+    }
+  ],
+  "candidate_command": [
+    "tdoku/build/generate",
+    "-p0",
+    "-c0",
+    "-g1",
+    "-d1",
+    "-n500",
+    "-e100",
+    "-s0",
+    "-a1"
+  ],
+  "counts": {
+    "advanced_7_8": 10000,
+    "advanced_8_plus": 10000,
+    "easy": 10000,
+    "expert": 10000,
+    "extreme": 10000,
+    "hard": 8213,
+    "master": 10000,
+    "medium": 10000
+  },
+  "elapsed_seconds": 12343,
+  "format": "ndjson.gz",
+  "generated_candidates": 295290,
+  "rating_engine": "Sukaku Explainer serate",
+  "rejected_candidates": 267673,
+  "solution_engine": "built-in bitmask backtracking uniqueness solver",
+  "started_at_unix": 1781547794,
+  "targets": {
+    "advanced_7_8": 10000,
+    "advanced_8_plus": 10000,
+    "easy": 10000,
+    "expert": 10000,
+    "extreme": 10000,
+    "hard": 10000,
+    "master": 10000,
+    "medium": 10000
+  },
+  "updated_at_unix": 1781560137
+}
