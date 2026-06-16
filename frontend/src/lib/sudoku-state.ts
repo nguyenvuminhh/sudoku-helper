@@ -435,6 +435,15 @@ export function notesEqual(left: NotesGrid, right: NotesGrid): boolean {
   return left.length === right.length && left.every((values, index) => numberListsEqual(values, right[index] ?? []));
 }
 
+export function marksEqual(left: BoardMarks, right: BoardMarks): boolean {
+  return (
+    notesEqual(left.corner, right.corner) &&
+    notesEqual(left.center, right.center) &&
+    left.colors.length === right.colors.length &&
+    left.colors.every((color, index) => color === right.colors[index])
+  );
+}
+
 export function numberListsEqual(left: number[], right: number[]): boolean {
   return left.length === right.length && left.every((value, index) => value === right[index]);
 }

@@ -175,6 +175,7 @@ export default function SudokuTutorPage() {
               canApplyCurrentHint={game.canApplyCurrentHint}
               filledCount={game.filledCount}
               isValid={game.validation.valid}
+              hintReady={game.hintReady}
               history={game.history}
               settings={game.settings}
               onApplyHint={game.applyHint}

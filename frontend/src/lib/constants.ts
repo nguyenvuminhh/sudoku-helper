@@ -20,6 +20,26 @@ export type GeneratedLevel =
   | "advanced_7_8"
   | "advanced_8_plus";
 export type EntryMode = "value" | "corner" | "center" | "color";
+/** The two pencil-mark layers (a subset of EntryMode). */
+export type NoteEntryMode = Extract<EntryMode, "corner" | "center">;
+
+export function isNoteEntryMode(mode: EntryMode): mode is NoteEntryMode {
+  return mode === "corner" || mode === "center";
+}
+
+/** Status-bar copy describing what an entry mode does. */
+export function entryModeMessage(mode: EntryMode): string {
+  if (mode === "corner") {
+    return "Corner notes: digits mark the corners of selected empty cells.";
+  }
+  if (mode === "center") {
+    return "Center notes: digits collect in the middle of selected empty cells.";
+  }
+  if (mode === "color") {
+    return "Color mode: digits paint the selected cells. Press again to clear.";
+  }
+  return "Normal mode: digits fill the selected cells.";
+}
 
 /** Accessible names for the 9 cell paint colors, indexed 1-9. */
 export const PAINT_COLOR_NAMES = [

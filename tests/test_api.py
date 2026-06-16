@@ -6,107 +6,10 @@ from unittest.mock import patch
 from fastapi.testclient import TestClient
 
 from backend.app.sudoku.engine import Attribution, DifficultyLevel, GeneratedPuzzle
-from backend.app.sudoku.grid import candidate_map, parse_grid
 from backend.app.main import _parse_cors_origins, create_app
 
 
-REFERENCE_GRID = (
-    "000694832"
-    "004357196"
-    "090002745"
-    "070035004"
-    "040008600"
-    "031046000"
-    "400000078"
-    "000000420"
-    "900400560"
-)
-
-LOCKED_CANDIDATE_GRID = (
-    "000010020"
-    "108267304"
-    "623000000"
-    "900026000"
-    "200000003"
-    "000590201"
-    "000030708"
-    "301970400"
-    "070050030"
-)
-
-
 class ApiTests(unittest.TestCase):
-    def test_hint_endpoint_returns_structured_hint(self):
-        client = TestClient(create_app(static_dir=None))
-
-        response = client.post("/api/sudoku/hint", json={"grid": REFERENCE_GRID})
-
-        self.assertEqual(response.status_code, 200)
-        body = response.json()
-        self.assertEqual(body["technique"]["id"], "hidden_single")
-        self.assertEqual(body["action"]["cell"], {"row": 5, "col": 9})
-        self.assertEqual(body["action"]["digit"], 3)
-
-    def test_hint_endpoint_prefers_engine_hint_when_available(self):
-        client = TestClient(create_app(static_dir=None))
-        engine_hint = {
-            "technique": {"id": "x_wing", "name": "X-Wing", "rank": 32},
-            "action": {
-                "type": "eliminate",
-                "cell": None,
-                "digit": None,
-                "eliminations": [{"cell": {"row": 1, "col": 1}, "digit": 2}],
-            },
-            "summary": "Remove 2 from R1C1 using X-Wing.",
-            "explanation": ["Conclusion: remove 2 from R1C1.", "Engine explanation."],
-            "highlights": {
-                "primary_cells": [{"row": 1, "col": 1}],
-                "related_cells": [],
-                "eliminations": [{"cell": {"row": 1, "col": 1}, "digit": 2}],
-            },
-        }
-
-        with patch("backend.app.main.hint_with_engine", return_value=engine_hint):
-            response = client.post("/api/sudoku/hint", json={"grid": REFERENCE_GRID})
-
-        self.assertEqual(response.status_code, 200)
-        body = response.json()
-        self.assertEqual(body["technique"]["id"], "x_wing")
-        self.assertEqual(body["summary"], "Remove 2 from R1C1 using X-Wing.")
-
-    def test_hint_endpoint_uses_candidate_payload_to_skip_applied_elimination(self):
-        client = TestClient(create_app(static_dir=None))
-        candidates = {
-            str(index): sorted(digits)
-            for index, digits in candidate_map(parse_grid(LOCKED_CANDIDATE_GRID)).items()
-        }
-        candidates["3"].remove(4)
-        candidates["5"].remove(4)
-
-        response = client.post(
-            "/api/sudoku/hint",
-            json={"grid": LOCKED_CANDIDATE_GRID, "candidates": candidates},
-        )
-
-        self.assertEqual(response.status_code, 200)
-        body = response.json()
-        self.assertNotEqual(body["summary"], "4 is locked in row 1 inside box 1.")
-        self.assertNotEqual(
-            body["action"]["eliminations"],
-            [
-                {"cell": {"row": 1, "col": 4}, "digit": 4},
-                {"cell": {"row": 1, "col": 6}, "digit": 4},
-            ],
-        )
-
-    def test_invalid_grid_blocks_hinting(self):
-        client = TestClient(create_app(static_dir=None))
-
-        response = client.post("/api/sudoku/hint", json={"grid": "11" + "0" * 79})
-
-        self.assertEqual(response.status_code, 422)
-        self.assertIn("conflicts", response.json()["detail"][0])
-
     def test_generate_endpoint_returns_rated_puzzle(self):
         client = TestClient(create_app(static_dir=None))
         generated = GeneratedPuzzle(

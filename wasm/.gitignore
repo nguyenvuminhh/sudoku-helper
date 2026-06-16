@@ -1,0 +1,5 @@
+# l2sg sources are fetched on demand by build.sh; not vendored.
+l2sg/
+# CMake build tree
+build/
+*.o

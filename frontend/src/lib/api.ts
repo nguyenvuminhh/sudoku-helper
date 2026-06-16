@@ -1,4 +1,4 @@
-import { gridToPayload, notesToCandidatePayload, type NotesGrid, type OcrCell, type SudokuGrid } from "./sudoku-state";
+import { type OcrCell } from "./sudoku-state";
 
 export type HintResponse = {
   technique: {
@@ -53,16 +53,6 @@ export type GeneratedPuzzleResponse = {
 };
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "";
-
-export async function requestHint(grid: SudokuGrid, notes?: NotesGrid): Promise<HintResponse> {
-  const body: { grid: string; candidates?: Record<string, number[]> } = { grid: gridToPayload(grid) };
-  const candidates = notes ? notesToCandidatePayload(grid, notes) : null;
-  if (candidates) {
-    body.candidates = candidates;
-  }
-
-  return postJson<HintResponse>(`${API_BASE_URL}/api/sudoku/hint`, body);
-}
 
 export async function requestGeneratedPuzzle(level: string): Promise<GeneratedPuzzleResponse> {
   return postJson<GeneratedPuzzleResponse>(`${API_BASE_URL}/api/sudoku/generate`, { level });

@@ -8,7 +8,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from backend.app.sudoku.engine import DifficultyLevel, EngineUnavailable, generate_puzzle, hint_with_engine, rate_puzzle
+from backend.app.sudoku.engine import DifficultyLevel, EngineUnavailable, generate_puzzle, rate_puzzle
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -104,22 +104,6 @@ class SudokuEngineTests(unittest.TestCase):
 
         self.assertEqual(rating.level.id, "expert")
         self.assertEqual(rating.techniques, ["x_wing", "hidden_rectangle"])
-
-    def test_hint_with_engine_invokes_hint_command_with_candidate_payload(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            calls_path = Path(tmp) / "calls.json"
-            engine = _write_fake_engine(Path(tmp) / "fake-engine", calls_path=calls_path)
-            candidates = {0: {1, 2}, 1: {3}}
-
-            with patch.dict(os.environ, {"SUDOKU_ENGINE_BIN": str(engine)}):
-                hint = hint_with_engine([0] * 81, candidates=candidates)
-            calls = json.loads(calls_path.read_text(encoding="utf-8"))
-
-        self.assertEqual(hint["technique"]["id"], "x_wing")
-        self.assertEqual(hint["action"]["type"], "eliminate")
-        self.assertEqual(calls[0:2], ["hint", "0" * 81])
-        self.assertEqual(calls[2], "--candidates")
-        self.assertEqual(json.loads(calls[3]), {"0": [1, 2], "1": [3]})
 
     def test_missing_engine_is_reported_without_crashing_api(self):
         with tempfile.TemporaryDirectory() as tmp:

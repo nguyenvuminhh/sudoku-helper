@@ -1,7 +1,76 @@
 import type { GeneratedPuzzleResponse, HintResponse } from "./api";
-import { cellToIndex, type CheckResult, type SudokuGrid, type ValidationConflict } from "./sudoku-state";
+import type { NoteEntryMode } from "./constants";
+import type { HintResult } from "./hintEngine";
+import {
+  cellToIndex,
+  indexToCell,
+  notesToCandidatePayload,
+  type BoardMarks,
+  type CheckResult,
+  type NotesGrid,
+  type SudokuGrid,
+  type ValidationConflict
+} from "./sudoku-state";
 
 export type HintCellKind = "primary" | "related" | "elimination";
+
+function techniqueId(name: string): string {
+  return name
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "");
+}
+
+/**
+ * Serializes the board's pencil marks into the candidate string the l2sg engine
+ * accepts (81 cells joined by '|', each a run of its candidate digits, empty for
+ * filled cells). Returns "" when the player has no notes, so the engine derives
+ * full candidates from the values itself. Reuses `notesToCandidatePayload` so
+ * the candidates handed to the engine are always intersected with the legal set.
+ */
+export function buildCandidateString(grid: SudokuGrid, notes: NotesGrid): string {
+  const payload = notesToCandidatePayload(grid, notes);
+  if (!payload) {
+    return "";
+  }
+  const segments: string[] = [];
+  for (let index = 0; index < 81; index += 1) {
+    const candidates = payload[String(index)] ?? [];
+    segments.push(grid[index] === null ? candidates.join("") : "");
+  }
+  return segments.join("|");
+}
+
+/**
+ * Maps an l2sg `HintResult` onto the `HintResponse` shape the UI renders, so
+ * HintPanel, HistoryPanel, and applyHint keep working unchanged. Pattern cells
+ * become `primary_cells` (blue), eliminations stay red, and a placement drives
+ * the green preview via the place action.
+ */
+export function hintResultToResponse(hint: HintResult): HintResponse {
+  const technique = { id: techniqueId(hint.technique), name: hint.technique, rank: hint.difficulty };
+  const explanation = [hint.description];
+
+  if (hint.placement) {
+    const cell = indexToCell(hint.placement.cell);
+    return {
+      technique,
+      action: { type: "place", cell, digit: hint.placement.digit, eliminations: [] },
+      summary: technique.name,
+      explanation,
+      highlights: { primary_cells: [cell], related_cells: [], eliminations: [] }
+    };
+  }
+
+  const eliminations = hint.eliminations.map((item) => ({ cell: indexToCell(item.cell), digit: item.digit }));
+  return {
+    technique,
+    action: { type: "eliminate", cell: null, digit: null, eliminations },
+    summary: technique.name,
+    explanation,
+    highlights: { primary_cells: hint.causalCells.map(indexToCell), related_cells: [], eliminations }
+  };
+}
 
 export type HintPreview = { index: number; digit: number };
 
@@ -22,6 +91,29 @@ export function collectHintCells(hint: HintResponse | null, kind: HintCellKind):
   return new Set(hint.highlights.eliminations.map((item) => cellToIndex(item.cell)));
 }
 
+/**
+ * Drops eliminations the player has already crossed off in their notes, so the
+ * displayed hint is never redundant. Returns the trimmed hint, or null when
+ * nothing new remains. Placement hints pass through unchanged.
+ */
+export function withoutAppliedEliminations(hint: HintResponse, notes: NotesGrid): HintResponse | null {
+  if (hint.action.type !== "eliminate") {
+    return hint;
+  }
+  const eliminations = hint.action.eliminations.filter((item) => {
+    const cellNotes = notes[cellToIndex(item.cell)] ?? [];
+    return cellNotes.length === 0 || cellNotes.includes(item.digit);
+  });
+  if (eliminations.length === 0) {
+    return null;
+  }
+  return {
+    ...hint,
+    action: { ...hint.action, eliminations },
+    highlights: { ...hint.highlights, eliminations }
+  };
+}
+
 export function collectHintPreview(hint: HintResponse | null, grid: SudokuGrid): HintPreview | null {
   if (hint?.action.type !== "place" || !hint.action.cell || !hint.action.digit) {
     return null;
@@ -33,6 +125,25 @@ export function collectHintPreview(hint: HintResponse | null, grid: SudokuGrid):
   }
 
   return { index, digit: hint.action.digit };
+}
+
+/**
+ * The candidates the player is tracking for one cell. When a cell carries notes
+ * in both layers the player's active note mode wins; otherwise whichever layer
+ * has notes is used.
+ */
+export function effectiveCellNotes(corner: number[], center: number[], preferred: NoteEntryMode): number[] {
+  if (corner.length > 0 && center.length > 0) {
+    return preferred === "center" ? center : corner;
+  }
+  return corner.length > 0 ? corner : center;
+}
+
+/** Per-cell candidate notes for empty cells, collapsing the two note layers. */
+export function effectiveNotesGrid(grid: SudokuGrid, marks: BoardMarks, preferred: NoteEntryMode): NotesGrid {
+  return grid.map((value, index) =>
+    value === null ? effectiveCellNotes(marks.corner[index] ?? [], marks.center[index] ?? [], preferred) : []
+  );
 }
 
 export function checkResultMessage(result: CheckResult): string {

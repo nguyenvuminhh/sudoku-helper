@@ -20,6 +20,7 @@ export function SolvingPanel({
   canApplyCurrentHint,
   filledCount,
   isValid,
+  hintReady,
   history,
   settings,
   onApplyHint,
@@ -32,6 +33,7 @@ export function SolvingPanel({
   canApplyCurrentHint: boolean;
   filledCount: number;
   isValid: boolean;
+  hintReady: boolean;
   history: HintResponse[];
   settings: Settings;
   onApplyHint: () => void;
@@ -51,10 +53,14 @@ export function SolvingPanel({
         type="button"
         className="btn primary full"
         onClick={onHint}
-        disabled={Boolean(busyLabel) || filledCount === 0 || !isValid}
+        disabled={Boolean(busyLabel) || filledCount === 0 || !isValid || !hintReady}
       >
-        {busyLabel === "Finding hint" ? <Loader2 className="spin" size={17} /> : <Lightbulb size={17} />}
-        <span>Get a hint</span>
+        {busyLabel === "Finding hint" || !hintReady ? (
+          <Loader2 className="spin" size={17} />
+        ) : (
+          <Lightbulb size={17} />
+        )}
+        <span>{hintReady ? "Get a hint" : "Loading hint engine…"}</span>
       </button>
 
       <div className="disclosure">

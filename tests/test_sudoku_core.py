@@ -1,20 +1,6 @@
 import unittest
 
 from backend.app.sudoku.grid import parse_grid, validate_grid
-from backend.app.sudoku.solver import next_hint
-
-
-REFERENCE_GRID = (
-    "000694832"
-    "004357196"
-    "090002745"
-    "070035004"
-    "040008600"
-    "031046000"
-    "400000078"
-    "000000420"
-    "900400560"
-)
 
 
 class SudokuCoreTests(unittest.TestCase):
@@ -34,17 +20,6 @@ class SudokuCoreTests(unittest.TestCase):
         self.assertFalse(validate_grid(row_conflict).valid)
         self.assertFalse(validate_grid(column_conflict).valid)
         self.assertFalse(validate_grid(box_conflict).valid)
-
-    def test_next_hint_returns_layered_hidden_single(self):
-        hint = next_hint(parse_grid(REFERENCE_GRID))
-
-        self.assertEqual(hint.technique.id, "hidden_single")
-        self.assertEqual(hint.action.type, "place")
-        self.assertEqual(hint.action.cell, {"row": 5, "col": 9})
-        self.assertEqual(hint.action.digit, 3)
-        self.assertIn("box 6", hint.summary.lower())
-        self.assertGreaterEqual(len(hint.explanation), 3)
-        self.assertIn({"row": 5, "col": 9}, hint.highlights.primary_cells)
 
 
 if __name__ == "__main__":

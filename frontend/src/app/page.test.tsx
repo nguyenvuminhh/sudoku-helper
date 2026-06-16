@@ -2,8 +2,6 @@
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-
-import type { HintResponse } from "../lib/api";
 import { SAMPLE_PUZZLE } from "../lib/constants";
 import { decodePuzzleParam, encodePuzzleParam } from "../lib/share-codec";
 import { gridToPayload, parsePuzzleText } from "../lib/sudoku-state";
@@ -14,14 +12,30 @@ vi.mock("../lib/api", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../lib/api")>();
   return {
     ...actual,
-    requestHint: vi.fn(),
     requestGeneratedPuzzle: vi.fn(),
     recognizeImage: vi.fn()
   };
 });
 
+// The l2sg hint engine runs in a Web Worker (unavailable in jsdom), so stub the
+// hook with a ready engine that returns a fixed placement for the sample.
+vi.mock("../hooks/useHintEngine", () => ({
+  useHintEngine: () => ({
+    ready: true,
+    loading: false,
+    getHint: async () => ({
+      technique: "Naked Single",
+      description: "Naked Single: place 3 in R5C9.",
+      difficulty: 1,
+      causalCells: [44],
+      eliminationCells: [],
+      eliminations: [],
+      placement: { cell: 44, digit: 3 }
+    })
+  })
+}));
+
 const api = await import("../lib/api");
-const requestHintMock = vi.mocked(api.requestHint);
 const requestGeneratedPuzzleMock = vi.mocked(api.requestGeneratedPuzzle);
 
 function cell(row: number, col: number): HTMLElement {
@@ -45,16 +59,6 @@ async function openMore(user: ReturnType<typeof userEvent.setup>) {
 async function toggleQuickFill(user: ReturnType<typeof userEvent.setup>) {
   await openMore(user);
   await user.click(screen.getByRole("button", { name: /^quick fill$/i }));
-}
-
-function makePlaceHint(row: number, col: number, digit: number): HintResponse {
-  return {
-    technique: { id: "naked_single", name: "Naked Single", rank: 1 },
-    action: { type: "place", cell: { row, col }, digit, eliminations: [] },
-    summary: `R${row}C${col} must be ${digit}.`,
-    explanation: ["Only one candidate remains in this cell."],
-    highlights: { primary_cells: [{ row, col }], related_cells: [], eliminations: [] }
-  };
 }
 
 function rightClick(target: HTMLElement): boolean {
@@ -300,21 +304,20 @@ describe("SudokuTutorPage", () => {
     expect(screen.getByText(/no mistakes so far/i)).toBeDefined();
   });
 
-  it("requests a hint and applies the suggested placement", async () => {
+  it("resolves a hint from the engine and applies the suggested placement", async () => {
     const user = userEvent.setup();
-    requestHintMock.mockResolvedValue(makePlaceHint(1, 1, 7));
     render(<SudokuTutorPage />);
 
     await loadSampleAndConfirm(user);
     await user.click(screen.getByRole("button", { name: /get a hint/i }));
 
+    // The stubbed l2sg engine returns a Naked Single placing 3 at R5C9.
     expect((await screen.findAllByText("Naked Single")).length).toBeGreaterThan(0);
-    expect(screen.getAllByText("R1C1 must be 7.").length).toBeGreaterThan(0);
 
     await user.click(screen.getByRole("button", { name: /apply/i }));
 
-    expect(within(cell(1, 1)).getByText("7")).toBeDefined();
-    expect(screen.getByText(/applied 7 at r1c1/i)).toBeDefined();
+    expect(within(cell(5, 9)).getByText("3")).toBeDefined();
+    expect(screen.getByText(/applied 3 at r5c9/i)).toBeDefined();
   });
 
   it("undoes the last board change with the undo button", async () => {

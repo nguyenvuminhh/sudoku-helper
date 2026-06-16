@@ -5,16 +5,27 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import {
   requestGeneratedPuzzle,
   recognizeImage,
-  requestHint,
   type HintResponse
 } from "../lib/api";
-import { SAMPLE_PUZZLE, type EntryMode, type GeneratedLevel, type TutorPhase } from "../lib/constants";
 import {
+  SAMPLE_PUZZLE,
+  entryModeMessage,
+  isNoteEntryMode,
+  type EntryMode,
+  type GeneratedLevel,
+  type NoteEntryMode,
+  type TutorPhase
+} from "../lib/constants";
+import {
+  buildCandidateString,
   checkResultMessage,
   collectConflictIndexes,
   collectHintCells,
   collectHintPreview,
+  effectiveNotesGrid,
   generatedPuzzleMessage,
+  hintResultToResponse,
+  withoutAppliedEliminations,
   type HintPreview
 } from "../lib/hints";
 import { parseSavedSession, serializeSession, SESSION_STORAGE_KEY } from "../lib/session";
@@ -37,10 +48,9 @@ import {
   gridToPayload,
   gridsEqual,
   indexToCell,
+  marksEqual,
   moveSelection,
   nextIncompleteDigit,
-  notesEqual,
-  notesToCandidatePayload,
   numberListsEqual,
   parsePuzzleText,
   peerIndexes,
@@ -61,9 +71,10 @@ import {
   type NavDirection,
   type SudokuGrid
 } from "../lib/sudoku-state";
+import { useBoardGestures } from "./useBoardGestures";
+import { useHintEngine } from "./useHintEngine";
+import { useSessionPersistence } from "./useSessionPersistence";
 import { useSettings } from "./useSettings";
-
-type NoteEntryMode = Extract<EntryMode, "corner" | "center">;
 
 export type SudokuGame = ReturnType<typeof useSudokuGame>;
 
@@ -99,21 +110,8 @@ export function useSudokuGame() {
   const [checksUsed, setChecksUsed] = useState(0);
   const [techniqueNames, setTechniqueNames] = useState<string[]>([]);
   const { settings, setSetting } = useSettings();
-
-  const draggingRef = useRef(false);
-  const dragMovedRef = useRef(false);
-  // Drag-select only engages once the pointer leaves a small dead zone around the
-  // press point, so a tap that jitters across a cell border is not read as a drag.
-  const pointerStartRef = useRef<{ x: number; y: number } | null>(null);
-  const dragArmedRef = useRef(false);
-  // Details of the active left press, used to resolve the gesture on release.
-  const pressIndexRef = useRef<number | null>(null);
-  const pressAdditiveRef = useRef(false);
-  const pressTouchRef = useRef(false);
-  const rightPointerModeRef = useRef<"note" | "inactive" | null>(null);
-  const rightPointerStartIndexRef = useRef<number | null>(null);
-  const rightPointerMovedRef = useRef(false);
-  const rightPointerVisitedRef = useRef<Set<number>>(new Set());
+  // l2sg WebAssembly hint engine (loads in a Web Worker on first mount).
+  const { ready: hintReady, getHint } = useHintEngine();
 
   // Live mirrors of the board state. Two pointer/click handlers can run in the
   // same tick before React re-renders (notably on touch, where the click-delay
@@ -128,6 +126,26 @@ export function useSudokuGame() {
   marksRef.current = marks;
   lowConfidenceRef.current = lowConfidence;
   selectedIndexRef.current = selectedIndex;
+
+  // Pointer/touch selection and quick-fill gestures live in their own hook; it
+  // reads the state below and calls the placement/note actions defined further
+  // down (hoisted function declarations).
+  const { beginCellSelection, endCellSelection, dragCellSelection, clickCell, rightClickCell } = useBoardGestures({
+    paused,
+    quickFillMode,
+    quickFillDigit,
+    entryMode,
+    noteType,
+    selectedIndex,
+    selectedIndexes,
+    setSelectedIndex,
+    setSelectedIndexes,
+    placeQuickFillAt,
+    placeQuickFillOnSelection,
+    addNoteToIndexes,
+    toggleNoteOnIndexes,
+    applyValueToCells
+  });
 
   const filledCount = countFilledCells(grid);
   const digitCounts = useMemo(() => {
@@ -293,38 +311,6 @@ export function useSudokuGame() {
     }
   }, [isSolved, solvedAnnounced, elapsedSeconds]);
 
-  // End a drag selection wherever the pointer is released, and only arm the drag
-  // once the pointer has travelled past a small threshold from the press point.
-  useEffect(() => {
-    const DRAG_THRESHOLD = 8;
-
-    function handlePointerMove(event: PointerEvent) {
-      if (!draggingRef.current || dragArmedRef.current || !pointerStartRef.current) {
-        return;
-      }
-      const dx = event.clientX - pointerStartRef.current.x;
-      const dy = event.clientY - pointerStartRef.current.y;
-      if (Math.hypot(dx, dy) > DRAG_THRESHOLD) {
-        dragArmedRef.current = true;
-      }
-    }
-
-    function handlePointerUp() {
-      draggingRef.current = false;
-      dragArmedRef.current = false;
-      pointerStartRef.current = null;
-      rightPointerModeRef.current = null;
-      rightPointerStartIndexRef.current = null;
-      rightPointerVisitedRef.current = new Set();
-    }
-    window.addEventListener("pointermove", handlePointerMove);
-    window.addEventListener("pointerup", handlePointerUp);
-    return () => {
-      window.removeEventListener("pointermove", handlePointerMove);
-      window.removeEventListener("pointerup", handlePointerUp);
-    };
-  }, []);
-
   function selectOnly(index: number) {
     selectedIndexRef.current = index;
     setSelectedIndex(index);
@@ -336,127 +322,6 @@ export function useSudokuGame() {
   function clearSelection() {
     setSelectedIndex(-1);
     setSelectedIndexes([]);
-  }
-
-  function beginCellSelection(index: number, additive: boolean, button = 0, x = 0, y = 0, pointerType = "mouse") {
-    if (paused) {
-      return;
-    }
-    if (button === 2) {
-      draggingRef.current = false;
-      dragMovedRef.current = false;
-      rightPointerModeRef.current = quickFillMode && quickFillDigit !== null && entryMode === "value" ? "note" : "inactive";
-      rightPointerStartIndexRef.current = index;
-      rightPointerMovedRef.current = false;
-      rightPointerVisitedRef.current = new Set();
-      selectCellFromPointerDown(index, additive);
-      return;
-    }
-
-    rightPointerModeRef.current = null;
-    rightPointerStartIndexRef.current = null;
-    rightPointerVisitedRef.current = new Set();
-    draggingRef.current = true;
-    dragMovedRef.current = false;
-    dragArmedRef.current = false;
-    pointerStartRef.current = { x, y };
-    pressIndexRef.current = index;
-    pressAdditiveRef.current = additive;
-    pressTouchRef.current = pointerType === "touch";
-
-    // Whether this press lands inside a kept multi-selection must be read before
-    // selectCellFromPointerDown rewrites the selection.
-    const onKeptSelection = quickFillMode && selectedIndexes.length > 1 && selectedIndexes.includes(index);
-    selectCellFromPointerDown(index, additive);
-
-    // Touch fills on press so fast/edge taps register instantly and reliably;
-    // dragging is disabled for touch. Mouse/pen wait for release (see
-    // endCellSelection) so a click-drag can still build a multi-selection.
-    if (pressTouchRef.current && quickFillMode && !additive) {
-      if (onKeptSelection) {
-        placeQuickFillOnSelection();
-      } else {
-        placeQuickFillAt(index);
-      }
-    }
-  }
-
-  // Mouse/pen release: place the locked digit at the pressed cell when the
-  // gesture was a plain click (not a drag-select or an Alt build-up). Touch
-  // already placed on press.
-  function endCellSelection() {
-    if (paused || pressTouchRef.current || !draggingRef.current) {
-      return;
-    }
-    if (dragMovedRef.current || pressAdditiveRef.current) {
-      return;
-    }
-    if (!quickFillMode || quickFillDigit === null) {
-      return;
-    }
-    const index = pressIndexRef.current ?? selectedIndex;
-    if (index < 0) {
-      return;
-    }
-    if (selectedIndexes.length > 1 && selectedIndexes.includes(index)) {
-      placeQuickFillOnSelection();
-    } else {
-      placeQuickFillAt(index);
-    }
-  }
-
-  function selectCellFromPointerDown(index: number, additive: boolean) {
-    setSelectedIndex(index);
-    if (additive) {
-      setSelectedIndexes((current) => {
-        if (!current.includes(index)) {
-          return [...current, index];
-        }
-        const next = current.filter((item) => item !== index);
-        return next.length > 0 ? next : [index];
-      });
-    } else {
-      // Clicking inside an existing multi-selection (built by drag or Alt-click)
-      // keeps the whole group so the click can mark all of them at once;
-      // clicking anywhere else starts a fresh single selection.
-      setSelectedIndexes((current) =>
-        quickFillMode && current.length > 1 && current.includes(index) ? current : [index]
-      );
-    }
-  }
-
-  function dragCellSelection(index: number) {
-    if (paused) {
-      return;
-    }
-    if (rightPointerModeRef.current !== null) {
-      rightPointerMovedRef.current = true;
-      if (rightPointerModeRef.current === "note" && quickFillDigit !== null) {
-        const startIndex = rightPointerStartIndexRef.current;
-        const indexes = [startIndex, index].filter((item): item is number => item !== null);
-        const freshIndexes = indexes.filter((item) => {
-          if (rightPointerVisitedRef.current.has(item)) {
-            return false;
-          }
-          rightPointerVisitedRef.current.add(item);
-          return true;
-        });
-        if (freshIndexes.length > 0) {
-          addNoteToIndexes(freshIndexes, quickFillDigit, noteType);
-        }
-      }
-      return;
-    }
-    // Drag-select is a mouse/pen gesture only; touch never drags (taps place on
-    // press) so a finger sliding between cells can't hijack a tap. Movement is
-    // also ignored until the press travels past the arm threshold so a jittery
-    // click is not read as a drag.
-    if (pressTouchRef.current || !draggingRef.current || !dragArmedRef.current) {
-      return;
-    }
-    dragMovedRef.current = true;
-    setSelectedIndex(index);
-    setSelectedIndexes((current) => (current.includes(index) ? current : [...current, index]));
   }
 
   function recordUndoSnapshot() {
@@ -525,15 +390,6 @@ export function useSudokuGame() {
     setCheckResult(result);
     setChecksUsed((count) => count + 1);
     setMessages([checkResultMessage(result)]);
-  }
-
-  function marksEqual(left: BoardMarks, right: BoardMarks): boolean {
-    return (
-      notesEqual(left.corner, right.corner) &&
-      notesEqual(left.center, right.center) &&
-      left.colors.length === right.colors.length &&
-      left.colors.every((color, index) => color === right.colors[index])
-    );
   }
 
   function hasBoardStateChanged(nextGrid: SudokuGrid, nextMarks: BoardMarks, nextLowConfidence = lowConfidenceRef.current): boolean {
@@ -617,37 +473,6 @@ export function useSudokuGame() {
     }
 
     applyValueToCells(selectedIndexes, value, selectedIndexes.length === 1);
-  }
-
-  // Both selection and quick-fill placement now happen on pointer down/drag (see
-  // beginCellSelection / dragCellSelection). The click event stays unused for the
-  // board because it is too laggy and drift-prone on touch and trackpad; keyboard
-  // activation is handled by the keydown listener instead.
-  function clickCell() {
-    dragMovedRef.current = false;
-  }
-
-  function rightClickCell(index: number) {
-    if (paused) {
-      return;
-    }
-    if (rightPointerMovedRef.current) {
-      rightPointerMovedRef.current = false;
-      return;
-    }
-    if (!quickFillMode || quickFillDigit === null) {
-      return;
-    }
-
-    const targetIndexes = selectedIndexes.length > 1 && selectedIndexes.includes(index) ? selectedIndexes : [index];
-    if (entryMode === "value") {
-      toggleNoteOnIndexes(targetIndexes, quickFillDigit, noteType);
-      return;
-    }
-
-    if (isNoteEntryMode(entryMode)) {
-      applyValueToCells(targetIndexes, quickFillDigit, false);
-    }
   }
 
   function placeQuickFillAt(index: number) {
@@ -836,6 +661,14 @@ export function useSudokuGame() {
     }
   }
 
+  // The candidate layer the player is working in: the layer that holds notes,
+  // preferring their last-used note mode when both or neither layer has any.
+  function activeNotesLayer(boardMarks: BoardMarks): NoteEntryMode {
+    const cornerHasNotes = boardMarks.corner.some((notes) => notes.length > 0);
+    const centerHasNotes = boardMarks.center.some((notes) => notes.length > 0);
+    return cornerHasNotes === centerHasNotes ? noteType : cornerHasNotes ? "corner" : "center";
+  }
+
   function applyHint() {
     if (!currentHint) {
       return;
@@ -862,10 +695,12 @@ export function useSudokuGame() {
     if (currentHint.action.type === "eliminate" && currentHint.action.eliminations.length > 0) {
       const liveGrid = gridRef.current;
       const liveMarks = marksRef.current;
+      const targetLayer = activeNotesLayer(liveMarks);
+      const otherLayer: NoteEntryMode = targetLayer === "corner" ? "center" : "corner";
       const nextMarks = {
         ...liveMarks,
-        center: applyHintEliminationsToNotes(liveGrid, liveMarks.center, currentHint.action.eliminations),
-        corner: pruneEliminationsFromNotes(liveMarks.corner, currentHint.action.eliminations)
+        [targetLayer]: applyHintEliminationsToNotes(liveGrid, liveMarks[targetLayer], currentHint.action.eliminations),
+        [otherLayer]: pruneEliminationsFromNotes(liveMarks[otherLayer], currentHint.action.eliminations)
       };
       const firstCell = currentHint.action.eliminations[0].cell;
       if (hasBoardStateChanged(liveGrid, nextMarks)) {
@@ -879,22 +714,43 @@ export function useSudokuGame() {
     }
   }
 
+  function recordHint(nextHint: HintResponse) {
+    setCurrentHint(nextHint);
+    setHistory((items) => [nextHint, ...items].slice(0, 8));
+    setHintsUsed((count) => count + 1);
+    setTechniqueNames((names) =>
+      names.includes(nextHint.technique.name) ? names : [...names, nextHint.technique.name]
+    );
+    setMessages(["Hint found. Review the conclusion, then expand through the evidence."]);
+  }
+
   async function hint() {
     if (!isSolving) {
       setMessages(["Start solving before requesting a hint."]);
       return;
     }
+    if (!hintReady) {
+      setMessages(["The hint engine is still loading. Try again in a moment."]);
+      return;
+    }
 
+    // l2sg (WebAssembly) finds the simplest next logical step. The player's
+    // pencil marks are passed through so the hint respects work already done and
+    // advances past eliminations the player has applied.
+    const liveGrid = gridRef.current;
+    const notes = effectiveNotesGrid(liveGrid, marksRef.current, noteType);
     setBusyLabel("Finding hint");
     try {
-      const nextHint = await requestHint(grid, marks.center);
-      setCurrentHint(nextHint);
-      setHistory((items) => [nextHint, ...items].slice(0, 8));
-      setHintsUsed((count) => count + 1);
-      setTechniqueNames((names) =>
-        names.includes(nextHint.technique.name) ? names : [...names, nextHint.technique.name]
-      );
-      setMessages(["Hint found. Review the conclusion, then expand through the evidence."]);
+      const result = await getHint(gridToPayload(liveGrid), buildCandidateString(liveGrid, notes));
+      if (!result) {
+        setMessages(["No logical step found. The remaining cells need guessing, or the puzzle is complete."]);
+        return;
+      }
+
+      const response = hintResultToResponse(result);
+      // Drop eliminations the player already crossed off so the hint isn't
+      // redundant; if every elimination is already applied, still show the step.
+      recordHint(withoutAppliedEliminations(response, notes) ?? response);
     } catch (error) {
       setMessages([error instanceof Error ? error.message : "Hint generation failed."]);
     } finally {
@@ -902,16 +758,11 @@ export function useSudokuGame() {
     }
   }
 
-  function startSolving() {
-    if (filledCount === 0 || !validation.valid) {
-      return;
-    }
-
-    setPhase("solving");
-    setGivenMask(createGivenMask(grid));
+  // Clears the per-attempt state shared by starting a solve and loading a puzzle:
+  // notes, entry mode, undo/redo, timer, counters, and the active hint.
+  function resetSolveProgress() {
     setMarks(createEmptyMarks());
     setEntryMode("value");
-    setQuickFillMode(true);
     setQuickFillDigit(null);
     setCurrentHint(null);
     setUndoStack([]);
@@ -924,6 +775,17 @@ export function useSudokuGame() {
     setHintsUsed(0);
     setChecksUsed(0);
     setTechniqueNames([]);
+  }
+
+  function startSolving() {
+    if (filledCount === 0 || !validation.valid) {
+      return;
+    }
+
+    resetSolveProgress();
+    setPhase("solving");
+    setGivenMask(createGivenMask(grid));
+    setQuickFillMode(true);
     setMessages([
       "Solving phase started. Quick fill is on: pick a digit, then press it or Enter on a cell to place it. Loaded cells are locked."
     ]);
@@ -1019,25 +881,12 @@ export function useSudokuGame() {
   }
 
   function loadPuzzle(nextGrid: SudokuGrid, nextMessages: string[]) {
+    resetSolveProgress();
     setGrid(nextGrid);
-    setMarks(createEmptyMarks());
     setGivenMask(createGivenMask(createEmptyGrid()));
     setPhase("loading");
-    setEntryMode("value");
     setQuickFillMode(false);
-    setQuickFillDigit(null);
-    setCurrentHint(null);
     setHistory([]);
-    setUndoStack([]);
-    setRedoStack([]);
-    setCheckResult(null);
-    setPaused(false);
-    setElapsedSeconds(0);
-    setSolvedAnnounced(false);
-    setFinishDismissed(false);
-    setHintsUsed(0);
-    setChecksUsed(0);
-    setTechniqueNames([]);
     selectOnly(selectedIndex);
     setMessages(nextMessages);
   }
@@ -1145,6 +994,7 @@ export function useSudokuGame() {
     // hint state
     currentHint,
     history,
+    hintReady,
     hintPreview,
     canApplyCurrentHint,
     primaryIndexes,
@@ -1213,19 +1063,3 @@ export function useSudokuGame() {
   };
 }
 
-function entryModeMessage(mode: EntryMode): string {
-  if (mode === "corner") {
-    return "Corner notes: digits mark the corners of selected empty cells.";
-  }
-  if (mode === "center") {
-    return "Center notes: digits collect in the middle of selected empty cells.";
-  }
-  if (mode === "color") {
-    return "Color mode: digits paint the selected cells. Press again to clear.";
-  }
-  return "Normal mode: digits fill the selected cells.";
-}
-
-function isNoteEntryMode(mode: EntryMode): mode is NoteEntryMode {
-  return mode === "corner" || mode === "center";
-}

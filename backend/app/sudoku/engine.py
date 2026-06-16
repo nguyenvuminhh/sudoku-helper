@@ -298,13 +298,6 @@ def rate_puzzle(grid: str) -> GeneratedPuzzle:
     return _parse_engine_puzzle(_run_engine(["rate", grid]), None)
 
 
-def hint_with_engine(grid: list[int], candidates: dict[int, set[int]] | None = None) -> dict[str, object]:
-    args = ["hint", _grid_to_string(grid)]
-    if candidates is not None:
-        args.extend(["--candidates", json.dumps({str(index): sorted(digits) for index, digits in sorted(candidates.items())})])
-    return _parse_engine_hint(_run_engine(args))
-
-
 def _run_engine(args: list[str]) -> dict[str, Any]:
     engine_bin = Path(os.getenv("SUDOKU_ENGINE_BIN", str(DEFAULT_ENGINE_BIN)))
     if not engine_bin.exists():
@@ -398,19 +391,6 @@ def _parse_serate_record(record: dict[str, Any], requested: DifficultyLevel) -> 
         technique_profile={technique: 1 for technique in techniques},
         attribution=Attribution.serate_corpus(),
     )
-
-
-def _parse_engine_hint(raw: dict[str, Any]) -> dict[str, object]:
-    required = ("technique", "action", "summary", "explanation", "highlights")
-    if not all(key in raw for key in required):
-        raise EngineError("Sudoku engine returned a hint with missing fields.")
-    return raw
-
-
-def _grid_to_string(grid: list[int]) -> str:
-    if len(grid) != 81:
-        raise ValueError("Sudoku grid must contain exactly 81 cells.")
-    return "".join(str(cell) for cell in grid)
 
 
 def _normalize_grid_string(value: str) -> str:
