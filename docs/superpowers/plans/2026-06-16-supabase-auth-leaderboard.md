@@ -383,3 +383,12 @@ Expected: all pass.
 git add README.md docs/superpowers/plans/2026-06-16-supabase-auth-leaderboard.md
 git commit -m "docs: document supabase leaderboard setup"
 ```
+
+---
+
+## Execution Status
+
+- Task 1 complete in `b776ec9`: Supabase dependency, config helper, leaderboard helpers, and SQL migration.
+- Task 2 complete in `dea6e98`: guest account repository, hook, top-bar account menu, and behavior test.
+- Task 3 complete in `228ac6b`: solve saving, difficulty leaderboard UI, finish-dialog save state, and focused verification.
+- Task 4 in progress: README setup notes and full verification.
