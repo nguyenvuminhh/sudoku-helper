@@ -2,6 +2,7 @@
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { SETTINGS_STORAGE_KEY } from "../hooks/useSettings";
 import { SAMPLE_PUZZLE } from "../lib/constants";
 import { decodePuzzleParam, encodePuzzleParam } from "../lib/share-codec";
 import { gridToPayload, parsePuzzleText } from "../lib/sudoku-state";
@@ -37,6 +38,10 @@ vi.mock("../hooks/useHintEngine", () => ({
 
 const api = await import("../lib/api");
 const requestGeneratedPuzzleMock = vi.mocked(api.requestGeneratedPuzzle);
+const SOLVABLE_PUZZLE =
+  "530070000600195000098000060800060003400803001700020006060000280000419005000080079";
+const NEAR_COMPLETE_SOLUTION =
+  "534678912672195348198342567859761423426853791713924856961537284287419635345286179";
 
 function cell(row: number, col: number): HTMLElement {
   return screen.getByRole("gridcell", { name: new RegExp(`^Row ${row}, column ${col}(,|$)`) });
@@ -243,6 +248,31 @@ describe("SudokuTutorPage", () => {
     await user.click(screen.getByRole("switch", { name: /show remaining digit counts/i }));
 
     expect(document.querySelector(".keypad .remaining-count")).toBeNull();
+  });
+
+  it("auto-checks entered values when the setting is enabled", async () => {
+    const user = userEvent.setup();
+    render(<SudokuTutorPage />);
+
+    await user.click(screen.getByRole("tab", { name: /import/i }));
+    await user.click(screen.getByLabelText(/81-character puzzle/i));
+    await user.paste(SOLVABLE_PUZZLE);
+    await user.click(screen.getByRole("button", { name: /load puzzle/i }));
+    await user.click(screen.getByRole("button", { name: /start solving/i }));
+
+    await user.click(screen.getByRole("button", { name: /^settings$/i }));
+    const autoCheck = screen.getByRole("switch", { name: /auto-check entered values/i });
+    expect(autoCheck.getAttribute("aria-checked")).toBe("false");
+
+    await user.click(autoCheck);
+    expect(autoCheck.getAttribute("aria-checked")).toBe("true");
+    expect(JSON.parse(window.localStorage.getItem(SETTINGS_STORAGE_KEY) ?? "{}")).toMatchObject({ autoCheck: true });
+
+    await user.click(screen.getByRole("button", { name: "1" }));
+    await user.click(cell(1, 3));
+
+    expect(cell(1, 3).className).toContain("check-wrong");
+    expect(screen.getByText(/found 1 wrong number/i)).toBeDefined();
   });
 
   it("places the quick fill digit by clicking cells", async () => {
@@ -458,10 +488,8 @@ describe("SudokuTutorPage", () => {
 
   it("auto-advances the quick fill digit and shows finish stats on solve", async () => {
     const user = userEvent.setup();
-    const solution =
-      "534678912672195348198342567859761423426853791713924856961537284287419635345286179";
     // Blank R9C1 (a 3) and R9C9 (a 9) so two placements finish the board.
-    const puzzle = `${solution.slice(0, 72)}0${solution.slice(73, 80)}0`;
+    const puzzle = `${NEAR_COMPLETE_SOLUTION.slice(0, 72)}0${NEAR_COMPLETE_SOLUTION.slice(73, 80)}0`;
     render(<SudokuTutorPage />);
 
     await user.click(screen.getByRole("tab", { name: /import/i }));
