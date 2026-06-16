@@ -385,11 +385,15 @@ export function useSudokuGame() {
       return;
     }
 
-    const givens = grid.map((value, index) => (givenMask[index] ? value : null));
-    const result = checkPuzzle(givens, grid);
+    const result = checkGrid(grid);
     setCheckResult(result);
     setChecksUsed((count) => count + 1);
     setMessages([checkResultMessage(result)]);
+  }
+
+  function checkGrid(candidateGrid: SudokuGrid): CheckResult {
+    const givens = candidateGrid.map((value, index) => (givenMask[index] ? value : null));
+    return checkPuzzle(givens, candidateGrid);
   }
 
   function hasBoardStateChanged(nextGrid: SudokuGrid, nextMarks: BoardMarks, nextLowConfidence = lowConfidenceRef.current): boolean {
@@ -400,13 +404,13 @@ export function useSudokuGame() {
     );
   }
 
-  function updateGrid(nextGrid: SudokuGrid, nextMarks = marksRef.current) {
+  function updateGrid(nextGrid: SudokuGrid, nextMarks = marksRef.current, nextCheckResult: CheckResult | null = null) {
     gridRef.current = nextGrid;
     marksRef.current = nextMarks;
     setGrid(nextGrid);
     setMarks(nextMarks);
     setCurrentHint(null);
-    setCheckResult(null);
+    setCheckResult(nextCheckResult);
   }
 
   /** Records an undo snapshot and applies a marks-only change. */
@@ -626,12 +630,17 @@ export function useSudokuGame() {
     }
 
     const nextLowConfidence = lowConfidenceRef.current.filter((index) => !editable.includes(index));
-    if (isSolving && hasBoardStateChanged(nextGrid, nextMarks, nextLowConfidence)) {
+    const changed = hasBoardStateChanged(nextGrid, nextMarks, nextLowConfidence);
+    if (isSolving && changed) {
       recordUndoSnapshot();
     }
-    updateGrid(nextGrid, nextMarks);
+    const autoCheckResult = isSolving && settings.autoCheck ? checkGrid(nextGrid) : null;
+    updateGrid(nextGrid, nextMarks, autoCheckResult);
     lowConfidenceRef.current = nextLowConfidence;
     setLowConfidence(nextLowConfidence);
+    if (changed && autoCheckResult) {
+      setMessages([checkResultMessage(autoCheckResult)]);
+    }
     if (shouldAdvance && value !== null && editable.length === 1) {
       selectOnly(findNextInputIndex(nextGrid, editable[0]));
     }
@@ -1062,4 +1071,3 @@ export function useSudokuGame() {
     setGeneratedLevel
   };
 }
-
