@@ -494,8 +494,6 @@ def main(argv: Sequence[str] | None = None) -> int:
         raise SystemExit("--master-min-rating must be positive")
     if args.extreme_min_rating <= args.master_min_rating:
         raise SystemExit("--extreme-min-rating must be greater than --master-min-rating")
-    if not args.serate_jar.exists():
-        raise SystemExit(f"serate jar not found: {args.serate_jar}")
 
     try:
         counts = generate_corpus(args)

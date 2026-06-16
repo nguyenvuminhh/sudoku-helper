@@ -69,6 +69,21 @@ distributed under MIT OR Apache-2.0. The Docker image compiles the wrapper in a
 Rust build stage and copies only the compiled `sudoku-engine` binary into the
 Python runtime image.
 
+## Sudoku Hint Engine (WebAssembly)
+
+In-browser hints are produced by the `l2sg` C++ logical Sudoku solver compiled
+to WebAssembly via Emscripten. The compiled artifacts are committed to the
+repository at `frontend/public/wasm/l2sg.js` and `frontend/public/wasm/l2sg.wasm`
+and are shipped with the static frontend; the binding and build pipeline live in
+`wasm/`.
+
+- Project: l2sg
+- Source: https://github.com/rafaelfassi/l2sg
+- License: MIT
+
+The Emscripten-generated glue (`l2sg.js`) is produced by the Emscripten SDK
+(MIT / University of Illinois NCSA), which is required only at build time.
+
 ## Generated SE Bucket Corpus
 
 The baseline runtime corpus at `data/puzzles/serate-buckets` is generated data
