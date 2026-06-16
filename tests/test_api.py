@@ -132,9 +132,11 @@ class ApiTests(unittest.TestCase):
         self.assertEqual(body["attribution"]["name"], "Ukodus sudoku-core")
 
     def test_generate_endpoint_reports_missing_engine(self):
-        client = TestClient(create_app(static_dir=None))
+        with tempfile.TemporaryDirectory() as tmp:
+            client = TestClient(create_app(static_dir=None))
 
-        response = client.post("/api/sudoku/generate", json={"level": "easy", "seed": 11})
+            with patch.dict("os.environ", {"PUZZLE_HINT_SERATE_CORPUS_DIR": str(Path(tmp) / "empty-corpus")}):
+                response = client.post("/api/sudoku/generate", json={"level": "easy", "seed": 11})
 
         self.assertEqual(response.status_code, 503)
         self.assertIn("engine", response.json()["detail"][0]["message"].lower())

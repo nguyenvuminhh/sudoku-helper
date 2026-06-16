@@ -8,7 +8,7 @@ Sudoku-first puzzle hint website with a FastAPI backend and a static Next.js fro
 - Keyboard entry for the board: `1`-`9` fill cells, and `Space`, `Backspace`, `Delete`, or `0` clear cells.
 - Correction-first validation for invalid grids and low-confidence OCR cells.
 - Step-by-step hints with technique name, conclusion, layered explanation, highlights, and history.
-- Level-based puzzle generation backed by the Ukodus `sudoku-core` engine.
+- Level-based puzzle generation backed by a pregenerated SE bucket corpus, with the Ukodus `sudoku-core` engine as the fallback for legacy levels.
 - Row/column/box peer highlighting around the selected cell.
 - Corner notes, center notes, and a 9-color cell paint mode (`Tab` cycles modes, `Z`/`X`/`C`/`V` jump directly).
 - Multi-cell selection with click-drag, `Alt`/`Ctrl`+click, and `Shift`+arrows; entry applies to the whole selection.
@@ -71,6 +71,13 @@ The backend image uses a multi-stage Docker build: Rust compiles the local
 compiled `sudoku-engine` binary. Bare-metal backend runs need that binary at
 `bin/sudoku-engine` or `SUDOKU_ENGINE_BIN=/path/to/sudoku-engine`.
 
+Generated puzzle corpora are deploy-time data, not git-tracked source. Copy or
+mount `data/puzzles/serate-buckets` onto the backend host or container. The
+backend reads `PUZZLE_HINT_SERATE_CORPUS_DIR` when set and otherwise checks
+`data/puzzles/serate-buckets` under the project root. If the corpus is missing,
+`easy` through `master` fall back to `sudoku-engine`; `extreme` and advanced
+levels require the corpus.
+
 GitHub Pages repository variables:
 
 ```text
@@ -122,6 +129,145 @@ That downloads `onnxmodelzoo/mnist-8` from Hugging Face into `data/models/onnx-m
 The bundled MNIST model predicts labels `0..9`; blank handling is done before model inference by OpenCV. A predicted `0` is treated as empty because Sudoku cells only contain `1..9`.
 
 The importer intentionally reads only large given/entered digits. Small candidate notes inside a Sudoku cell are ignored.
+
+## Master and Extreme Corpus Generation
+
+For a large pregenerated hard-puzzle corpus, use Tdoku for fast candidate
+generation and Sukaku Explainer `serate` as the rating gate. The repository
+script keeps only puzzles that actually rate as hard enough by SE rating:
+
+- `master`: `8.0 <= SE rating < 10.0`
+- `extreme`: `SE rating >= 10.0`
+
+Both thresholds are configurable with `--master-min-rating` and
+`--extreme-min-rating`. On Apple Silicon local generation, `extreme >= 9.0`
+is a more practical starting point than `>= 10.0`.
+
+Install or build these outside this repository:
+
+- Tdoku: https://github.com/t-dillon/tdoku
+- Sukaku Explainer / serate jar: https://github.com/SudokuMonster/SukakuExplainer
+
+Example local run for a small smoke test:
+
+```bash
+python3 scripts/generate_hard_sudoku_corpus.py \
+  --candidate-command "/path/to/tdoku/build/generate -p0 -c0 -g1 -d1 -n100 -e50 -s0 -l 10000 -a1" \
+  --serate-jar /path/to/SukakuExplainer.jar \
+  --target-per-level 10 \
+  --chunk-size 5 \
+  --batch-size 250 \
+  --max-candidates 10000 \
+  --master-min-rating 8.0 \
+  --extreme-min-rating 9.0 \
+  --threads 10 \
+  --output-dir data/puzzles/serate-hard
+```
+
+For the full local corpus, keep the same command shape and use the default
+`--target-per-level 1000000`. Output is written as gzip-compressed NDJSON chunks:
+
+```text
+data/puzzles/serate-hard/
+  manifest.json
+  master/part-000000.ndjson.gz
+  extreme/part-000000.ndjson.gz
+```
+
+Each record includes the puzzle, solution, SE rating, pearl rating, diamond
+rating, and highest-rated serate technique. Existing chunks are scanned on
+startup, so rerunning the command resumes without duplicating already written
+puzzles.
+
+### Faster Seed Expansion Workflow
+
+For million-record corpora, prefer verified hard seeds plus Sudoku-preserving
+transformations over brute-force candidate generation. The local Tdoku checkout
+ships `data.zip`, whose `data/puzzles5_forum_hardest_1905_11+` member is
+documented by Tdoku as about 49,000 very difficult puzzles with Sudoku
+Explainer ratings of 11 or higher.
+
+Verify a small seed catalog and expand it:
+
+```bash
+python3 scripts/expand_hard_sudoku_seeds.py \
+  --seed-zip tdoku/data.zip \
+  --seed-member data/puzzles5_forum_hardest_1905_11+ \
+  --seed-catalog data/puzzles/verified-extreme-seeds.ndjson.gz \
+  --serate-jar SukakuExplainer.jar \
+  --java-bin /opt/homebrew/opt/openjdk/bin/java \
+  --threads 10 \
+  --verify-batch-size 50 \
+  --max-seeds 100 \
+  --levels extreme \
+  --target-per-level 1000 \
+  --chunk-size 100 \
+  --output-dir data/puzzles/expanded-extreme \
+  --extreme-min-rating 9.0
+```
+
+For a full extreme corpus, remove `--max-seeds` after the smoke test and set
+`--target-per-level 1000000`. The script verifies each seed once with `serate`,
+solves it once, then creates variants using digit relabeling, row/column swaps
+within valid bands/stacks, band/stack swaps, and transpose. These transformations
+preserve Sudoku structure and logical difficulty while producing different
+puzzle/solution strings.
+
+### Full SE Bucket Corpus
+
+To fill all app difficulty buckets from one candidate stream, use
+`scripts/generate_serate_bucket_corpus.py`. The default buckets are:
+
+```text
+easy              [1, 2)
+medium            [2, 3)
+hard              [3, 4)
+expert            [4, 5)
+master            [5, 6)
+extreme           [6, 7)
+advanced_7_8      [7, 8)
+advanced_8_plus   [8, infinity)
+```
+
+Smoke test:
+
+```bash
+python3 scripts/generate_serate_bucket_corpus.py \
+  --candidate-command "tdoku/build/generate -p0 -c0 -g1 -d1 -n100 -e50 -s0 -l 5000 -a1" \
+  --serate-jar SukakuExplainer.jar \
+  --java-bin /opt/homebrew/opt/openjdk/bin/java \
+  --target-per-bucket 10 \
+  --chunk-size 5 \
+  --batch-size 50 \
+  --max-candidates 5000 \
+  --threads 10 \
+  --output-dir data/puzzles/serate-buckets-smoke
+```
+
+Full run:
+
+```bash
+python3 scripts/generate_serate_bucket_corpus.py \
+  --candidate-command "tdoku/build/generate -p0 -c0 -g1 -d1 -n500 -e100 -s0 -a1" \
+  --serate-jar SukakuExplainer.jar \
+  --java-bin /opt/homebrew/opt/openjdk/bin/java \
+  --target-per-bucket 1000000 \
+  --chunk-size 10000 \
+  --batch-size 250 \
+  --threads 10 \
+  --output-dir data/puzzles/serate-buckets
+```
+
+The 9-10 and 10+ buckets are rare with brute-force generation. If those lag,
+use the verified seed expansion workflow for advanced buckets and this bucket
+script for the common ranges.
+
+At runtime, keep `data/puzzles/serate-buckets` out of git and deploy it as data:
+
+```bash
+PUZZLE_HINT_SERATE_CORPUS_DIR=/srv/puzzle-hint/serate-buckets \
+python3 -m uvicorn backend.app.main:app --host 127.0.0.1 --port 8001
+```
 
 ## Third-party notices
 

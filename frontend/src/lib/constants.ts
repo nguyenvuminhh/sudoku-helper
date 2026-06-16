@@ -10,7 +10,15 @@ export const SAMPLE_PUZZLE =
   "900400560";
 
 export type TutorPhase = "loading" | "solving";
-export type GeneratedLevel = "easy" | "medium" | "hard" | "expert" | "master";
+export type GeneratedLevel =
+  | "easy"
+  | "medium"
+  | "hard"
+  | "expert"
+  | "master"
+  | "extreme"
+  | "advanced_7_8"
+  | "advanced_8_plus";
 export type EntryMode = "value" | "corner" | "center" | "color";
 
 /** Accessible names for the 9 cell paint colors, indexed 1-9. */
@@ -32,5 +40,8 @@ export const GENERATED_LEVELS: Array<{ id: GeneratedLevel; label: string }> = [
   { id: "medium", label: "Medium" },
   { id: "hard", label: "Hard" },
   { id: "expert", label: "Expert" },
-  { id: "master", label: "Master" }
+  { id: "master", label: "Master" },
+  { id: "extreme", label: "Extreme" },
+  { id: "advanced_7_8", label: "Advanced 7-8" },
+  { id: "advanced_8_plus", label: "Advanced 8+" }
 ];

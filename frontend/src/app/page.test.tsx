@@ -354,6 +354,30 @@ describe("SudokuTutorPage", () => {
     expect(within(cell(1, 9)).getByText("9")).toBeDefined();
   });
 
+  it("offers the full SE bucket level set when generating puzzles", async () => {
+    const user = userEvent.setup();
+    const puzzle = `${"123456789".repeat(1)}${"0".repeat(72)}`;
+    requestGeneratedPuzzleMock.mockResolvedValue({
+      puzzle,
+      solution: "0".repeat(81),
+      level: { id: "advanced_8_plus", name: "Advanced 8+", description: "", techniques: [] },
+      requested_level: { id: "advanced_8_plus", name: "Advanced 8+", description: "", techniques: [] },
+      se_rating: 8.6,
+      techniques: ["Dynamic Forcing Chain"],
+      technique_profile: { "Dynamic Forcing Chain": 1 },
+      attribution: { name: "Puzzle Hint SE bucket corpus", url: "", license: "", copyright: "" }
+    });
+    render(<SudokuTutorPage />);
+
+    expect(screen.getByRole("button", { name: "Extreme" })).toBeDefined();
+    expect(screen.getByRole("button", { name: "Advanced 7-8" })).toBeDefined();
+    await user.click(screen.getByRole("button", { name: "Advanced 8+" }));
+    await user.click(screen.getByRole("button", { name: /generate puzzle/i }));
+
+    expect(requestGeneratedPuzzleMock).toHaveBeenCalledWith("advanced_8_plus");
+    expect(await screen.findByText(/generated advanced 8\+ puzzle/i)).toBeDefined();
+  });
+
   it("loads a shared puzzle URL into the review step", async () => {
     const code = encodePuzzleParam(parsePuzzleText(SAMPLE_PUZZLE));
     window.history.pushState({}, "", `/?p=${code}`);

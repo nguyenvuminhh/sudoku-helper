@@ -19,6 +19,12 @@ frontend/tsconfig.tsbuildinfo
 .env.local
 data/img/
 data/models/
+# Generated puzzle corpora are deployed as data, not committed source.
+data/puzzles/
+
+# Local generator tools
+SukakuExplainer.jar
+tdoku/
 
 # OS/editor noise
 .DS_Store

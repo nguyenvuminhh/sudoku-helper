@@ -69,6 +69,18 @@ distributed under MIT OR Apache-2.0. The Docker image compiles the wrapper in a
 Rust build stage and copies only the compiled `sudoku-engine` binary into the
 Python runtime image.
 
+## Generated SE Bucket Corpus
+
+The optional runtime corpus at `data/puzzles/serate-buckets` is generated data
+and is intentionally not committed to this repository. It is produced by local
+scripts that use:
+
+- Tdoku candidate generation: https://github.com/t-dillon/tdoku
+- Sukaku Explainer `serate` rating: https://github.com/SudokuMonster/SukakuExplainer
+
+Deployments can copy or mount the generated corpus beside the backend and set
+`PUZZLE_HINT_SERATE_CORPUS_DIR` when it is not under the project root.
+
 ## Frontend Runtime And Build Dependencies
 
 The static Next.js frontend is built from `frontend/package.json` and

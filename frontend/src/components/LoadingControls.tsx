@@ -155,7 +155,7 @@ export function LoadingControls({
             <span className="fld-label" id="difficulty-label">
               Difficulty
             </span>
-            <div className="chips" role="group" aria-labelledby="difficulty-label">
+            <div className="chips level-grid" role="group" aria-labelledby="difficulty-label">
               {GENERATED_LEVELS.map((level) => (
                 <button
                   key={level.id}
