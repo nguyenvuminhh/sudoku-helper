@@ -40,6 +40,14 @@ class PublicReleaseFilesTests(unittest.TestCase):
         self.assertIn("HEALTHCHECK", dockerfile)
         self.assertIn("uvicorn backend.app.main:app", dockerfile)
 
+    def test_backend_docker_image_includes_serate_bucket_corpus(self):
+        dockerfile = (ROOT / "Dockerfile").read_text(encoding="utf-8")
+        dockerignore = (ROOT / ".dockerignore").read_text(encoding="utf-8")
+
+        self.assertIn("COPY data/puzzles/serate-buckets ./data/puzzles/serate-buckets", dockerfile)
+        self.assertIn("!data/puzzles/serate-buckets/**", dockerignore)
+        self.assertTrue((ROOT / "data" / "puzzles" / "serate-buckets" / "manifest.json").exists())
+
     def test_ci_builds_sudoku_engine_cli(self):
         workflow = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
 

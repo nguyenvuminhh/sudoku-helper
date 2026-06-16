@@ -71,10 +71,10 @@ The backend image uses a multi-stage Docker build: Rust compiles the local
 compiled `sudoku-engine` binary. Bare-metal backend runs need that binary at
 `bin/sudoku-engine` or `SUDOKU_ENGINE_BIN=/path/to/sudoku-engine`.
 
-Generated puzzle corpora are deploy-time data, not git-tracked source. Copy or
-mount `data/puzzles/serate-buckets` onto the backend host or container. The
-backend reads `PUZZLE_HINT_SERATE_CORPUS_DIR` when set and otherwise checks
-`data/puzzles/serate-buckets` under the project root. If the corpus is missing,
+The baseline SE bucket corpus is committed at `data/puzzles/serate-buckets` and
+is copied into the backend Docker image. The backend also reads
+`PUZZLE_HINT_SERATE_CORPUS_DIR` when set, which is useful for overriding the
+bundled corpus with a larger server-mounted corpus. If the corpus is missing,
 `easy` through `master` fall back to `sudoku-engine`; `extreme` and advanced
 levels require the corpus.
 
@@ -262,7 +262,8 @@ The 9-10 and 10+ buckets are rare with brute-force generation. If those lag,
 use the verified seed expansion workflow for advanced buckets and this bucket
 script for the common ranges.
 
-At runtime, keep `data/puzzles/serate-buckets` out of git and deploy it as data:
+At runtime, the committed `data/puzzles/serate-buckets` path works by default.
+To override it with a larger server-mounted corpus:
 
 ```bash
 PUZZLE_HINT_SERATE_CORPUS_DIR=/srv/puzzle-hint/serate-buckets \

@@ -30,6 +30,7 @@ RUN python -m pip install --no-cache-dir --upgrade pip \
 
 COPY backend ./backend
 COPY scripts ./scripts
+COPY data/puzzles/serate-buckets ./data/puzzles/serate-buckets
 COPY --from=sudoku_engine_builder /engine/target/release/puzzle-hint-sudoku-engine ./bin/sudoku-engine
 
 RUN python scripts/download_digit_model.py

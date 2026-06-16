@@ -19,7 +19,8 @@ frontend/tsconfig.tsbuildinfo
 .env.local
 data/img/
 data/models/
-# Generated puzzle corpora are deployed as data, not committed source.
+# Additional generated puzzle corpora stay local; the baseline serate-buckets
+# corpus is tracked explicitly with git add -f.
 data/puzzles/
 
 # Local generator tools

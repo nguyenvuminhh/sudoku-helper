@@ -71,15 +71,15 @@ Python runtime image.
 
 ## Generated SE Bucket Corpus
 
-The optional runtime corpus at `data/puzzles/serate-buckets` is generated data
-and is intentionally not committed to this repository. It is produced by local
-scripts that use:
+The baseline runtime corpus at `data/puzzles/serate-buckets` is generated data
+and is committed with the application for simpler deployments. It is produced
+by local scripts that use:
 
 - Tdoku candidate generation: https://github.com/t-dillon/tdoku
 - Sukaku Explainer `serate` rating: https://github.com/SudokuMonster/SukakuExplainer
 
-Deployments can copy or mount the generated corpus beside the backend and set
-`PUZZLE_HINT_SERATE_CORPUS_DIR` when it is not under the project root.
+Deployments can use the bundled corpus or mount a larger generated corpus beside
+the backend and set `PUZZLE_HINT_SERATE_CORPUS_DIR`.
 
 ## Frontend Runtime And Build Dependencies
 
