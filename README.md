@@ -121,6 +121,10 @@ NEXT_PUBLIC_SUPABASE_URL=https://<project-ref>.supabase.co
 NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=<publishable-or-anon-key>
 ```
 
+For GitHub Pages deploys, set those as GitHub Actions repository variables
+alongside `NEXT_PUBLIC_API_BASE_URL` and `NEXT_PUBLIC_BASE_PATH`; the static
+frontend must receive them during `npm run build`.
+
 The browser uses the public key only. Do not put a Supabase service-role key in
 frontend environment variables. Completed solves are saved as leaderboard
 records only for non-anonymous signed-in users; V1 does not apply clean-solve

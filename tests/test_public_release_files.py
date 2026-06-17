@@ -141,6 +141,8 @@ class PublicReleaseFilesTests(unittest.TestCase):
         self.assertIn("actions/deploy-pages", workflow)
         self.assertIn("path: frontend/out", workflow)
         self.assertIn("NEXT_PUBLIC_API_BASE_URL", workflow)
+        self.assertIn("NEXT_PUBLIC_SUPABASE_URL", workflow)
+        self.assertIn("NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY", workflow)
 
     def test_supabase_migration_workflow_deploys_checked_in_migrations(self):
         workflow = (ROOT / ".github" / "workflows" / "supabase-migrations.yml").read_text(encoding="utf-8")
