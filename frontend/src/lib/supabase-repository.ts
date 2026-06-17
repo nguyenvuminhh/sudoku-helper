@@ -36,7 +36,6 @@ type SupabaseErrorResult = {
 export type SupabaseAuthClient = {
   auth: {
     getSession: () => Promise<SupabaseResult<{ session: SupabaseAuthSession | null }>>;
-    signInAnonymously: () => Promise<SupabaseResult<{ user: SupabaseAuthUser | null }>>;
     signOut?: () => Promise<SupabaseErrorResult>;
   };
 };
@@ -161,7 +160,7 @@ const PROFILE_COLUMNS = "id, display_name, avatar_seed";
 const SOLVE_RECORD_COLUMNS =
   "id, user_id, puzzle_fingerprint, difficulty, elapsed_seconds, hints_used, checks_used, givens, filled_by_user, techniques, completed_at";
 
-export async function ensureAnonymousSession(client: SupabaseAuthClient): Promise<AccountUser> {
+export async function readExistingSession(client: SupabaseAuthClient): Promise<AccountUser | null> {
   const sessionResult = await client.auth.getSession();
   throwIfError(sessionResult.error, "Unable to read Supabase session");
 
@@ -170,17 +169,14 @@ export async function ensureAnonymousSession(client: SupabaseAuthClient): Promis
     return mapUser(sessionUser);
   }
 
-  const signInResult = await client.auth.signInAnonymously();
-  throwIfError(signInResult.error, "Unable to start guest session");
-
-  if (!signInResult.data.user) {
-    throw new Error("Unable to start guest session");
-  }
-
-  return mapUser(signInResult.data.user);
+  return null;
 }
 
 export async function ensureProfile(client: SupabaseProfileClient, user: AccountUser): Promise<UserProfile> {
+  if (user.isAnonymous) {
+    throw new Error("Anonymous guests cannot create cloud profiles");
+  }
+
   const profiles = getProfilesQuery(client);
   const existing = await profiles.select(PROFILE_COLUMNS).eq("id", user.id).maybeSingle();
   throwIfError(existing.error, "Unable to load profile");

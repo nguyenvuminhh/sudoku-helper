@@ -1,10 +1,18 @@
 # Supabase Auth and Leaderboards Design
 
+## 2026-06-17 Update
+
+Guest mode is now local-only. The app must not start Supabase anonymous auth,
+create anonymous profiles, fetch leaderboards, or save solve records while the
+user is unauthenticated. Leaderboard reads and writes are reserved for
+non-anonymous signed-in sessions, and the SQL policies reject anonymous users
+even if anonymous auth is later enabled in Supabase.
+
 ## Decision
 
-Puzzle Hint will add Supabase Auth and Supabase Postgres as an optional account layer without changing the default play flow. The default mode is guest mode, implemented with Supabase anonymous auth. A guest can solve immediately, receive a stable Supabase user id for database rows, set a display name, and later upgrade the account with a permanent identity.
+Puzzle Hint will add Supabase Auth and Supabase Postgres as an optional account layer without changing the default play flow. The default mode is local guest mode, which does not create a Supabase session or write database rows. A guest can solve immediately on-device; cloud profiles, stats, and leaderboard records require a non-anonymous signed-in session.
 
-Every completed solve is saved and promoted to the leaderboard. V1 does not filter for clean solves, hints used, checks used, or any other eligibility rule. Leaderboards group by difficulty only. Later product work can add moderation, eligibility filters, or curated leaderboard rules without changing the solve-record foundation.
+Every completed signed-in solve is saved and promoted to the leaderboard. V1 does not filter for clean solves, hints used, checks used, or any other eligibility rule after a solve is eligible to save. Leaderboards group by difficulty only. Later product work can add moderation, eligibility filters, or curated leaderboard rules without changing the solve-record foundation.
 
 ## Goals
 
@@ -33,7 +41,7 @@ Supabase free plan constraints influence the V1 design:
 
 - Free plan capacity is suitable for the first public version: 50,000 monthly active users and 500 MB database size are listed on current Supabase pricing.
 - Built-in Auth email sending is rate-limited, so V1 should not depend on frequent email OTP or password reset flows.
-- Anonymous Auth fits guest-first play and still gives RLS-aware authenticated database access.
+- Local guest mode avoids anonymous Auth and keeps unauthenticated play away from leaderboard storage.
 
 References:
 
@@ -55,7 +63,7 @@ One row per Supabase user.
 - `created_at timestamptz not null default now()`
 - `updated_at timestamptz not null default now()`
 
-Display names are public because leaderboard rows need a name. A newly anonymous user receives a generated name such as `Guest 4821`. Users can update their own display name.
+Display names are public because leaderboard rows need a name. A newly signed-in user receives a generated name such as `Player 4821`. Users can update their own display name.
 
 ### `public.solve_records`
 
@@ -121,14 +129,14 @@ The app never ships a service-role key. All browser writes go through RLS.
 
 Add a small Supabase boundary in `frontend/src/lib/supabase.ts` and keep data operations in focused helpers:
 
-- `frontend/src/lib/auth.ts`: current user/session handling, anonymous sign-in, sign-out, account upgrade entry points.
+- `frontend/src/lib/auth.ts`: current user/session handling, sign-out, and future account sign-in entry points.
 - `frontend/src/lib/profiles.ts`: create/read/update profile.
 - `frontend/src/lib/solve-records.ts`: save completed solve, fetch personal stats, fetch difficulty leaderboard.
 
 Add a `useSupabaseAccount` hook that:
 
 - Creates or restores a Supabase session.
-- Signs in anonymously on first need, preferably when a solve starts or when a user opens account/stats UI.
+- Keeps guest play local and reads an existing non-anonymous session only after an explicit account action.
 - Ensures a profile row exists after sign-in.
 - Exposes account state to the page: loading, guest/permanent, display name, error.
 
@@ -174,7 +182,7 @@ Visual direction:
 ## Data Flow
 
 1. User opens the app and can enter/import/generate a puzzle without interacting with auth UI.
-2. When solving begins, `useSupabaseAccount` creates or restores a Supabase session. If no session exists, it signs in anonymously.
+2. When solving begins, `useSupabaseAccount` stays local. It does not create a Supabase session.
 3. When the board reaches a valid complete solution, `useSudokuGame` exposes finish stats and locked givens.
 4. `useSolveRecords` builds a solve record with the user id, profile, difficulty, puzzle fingerprint, and finish stats.
 5. The record is inserted into Supabase under RLS.
@@ -184,7 +192,7 @@ Visual direction:
 ## Error Handling
 
 - If Supabase environment variables are missing, the app stays playable and shows account/leaderboard as unavailable.
-- If anonymous sign-in fails, solving still works locally and the finish dialog reports that cloud stats are unavailable.
+- If no non-anonymous signed-in session exists, solving still works locally and the finish dialog reports that leaderboard saving requires sign-in.
 - If saving a solve fails, the user can keep playing; the UI exposes a retry action while the finish dialog is open.
 - If leaderboard loading fails, show an inline error and keep the rest of the solving UI usable.
 - Duplicate save attempts for the same completed board in the same browser session are ignored client-side.
@@ -198,7 +206,7 @@ Frontend build variables:
 
 Supabase project setup:
 
-- Enable anonymous sign-ins.
+- Keep anonymous sign-ins disabled.
 - Configure optional OAuth provider later if desired.
 - Run SQL migrations for profiles, solve records, RLS, grants, and leaderboard read surface.
 

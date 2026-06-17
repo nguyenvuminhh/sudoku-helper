@@ -1,47 +1,39 @@
 import { describe, expect, it, vi } from "vitest";
 
 import {
-  ensureAnonymousSession,
   ensureProfile,
   fetchDifficultyLeaderboard,
   fetchPersonalStats,
+  readExistingSession,
   saveSolveRecord
 } from "./supabase-repository";
 
 describe("supabase repository account helpers", () => {
-  it("reuses an existing Supabase session without creating another anonymous user", async () => {
-    const signInAnonymously = vi.fn();
+  it("reads an existing Supabase session without creating an anonymous user", async () => {
     const client = {
       auth: {
         getSession: vi.fn(async () => ({
-          data: { session: { user: { id: "user-1", email: null, is_anonymous: true } } },
-          error: null
-        })),
-        signInAnonymously
-      }
-    };
-
-    const user = await ensureAnonymousSession(client);
-
-    expect(user).toEqual({ id: "user-1", email: null, isAnonymous: true });
-    expect(signInAnonymously).not.toHaveBeenCalled();
-  });
-
-  it("creates an anonymous Supabase session when none exists", async () => {
-    const client = {
-      auth: {
-        getSession: vi.fn(async () => ({ data: { session: null }, error: null })),
-        signInAnonymously: vi.fn(async () => ({
-          data: { user: { id: "guest-1", email: null, is_anonymous: true } },
+          data: { session: { user: { id: "user-1", email: "user@example.com", is_anonymous: false } } },
           error: null
         }))
       }
     };
 
-    const user = await ensureAnonymousSession(client);
+    const user = await readExistingSession(client);
 
-    expect(client.auth.signInAnonymously).toHaveBeenCalledTimes(1);
-    expect(user).toEqual({ id: "guest-1", email: null, isAnonymous: true });
+    expect(user).toEqual({ id: "user-1", email: "user@example.com", isAnonymous: false });
+  });
+
+  it("returns null when no Supabase session exists", async () => {
+    const client = {
+      auth: {
+        getSession: vi.fn(async () => ({ data: { session: null }, error: null }))
+      }
+    };
+
+    const user = await readExistingSession(client);
+
+    expect(user).toBeNull();
   });
 
   it("creates a profile for the authenticated user when one does not exist", async () => {
@@ -71,7 +63,7 @@ describe("supabase repository account helpers", () => {
       }))
     };
 
-    const profile = await ensureProfile(client, { id: "abc123", email: null, isAnonymous: true });
+    const profile = await ensureProfile(client, { id: "abc123", email: "user@example.com", isAnonymous: false });
 
     const captured = inserts[0];
     expect(captured).toBeDefined();
@@ -86,6 +78,17 @@ describe("supabase repository account helpers", () => {
       displayName: captured.display_name,
       avatarSeed: "abc123"
     });
+  });
+
+  it("rejects profile creation for anonymous guest users", async () => {
+    const client = {
+      from: vi.fn()
+    };
+
+    await expect(ensureProfile(client, { id: "anon-1", email: null, isAnonymous: true })).rejects.toThrow(
+      /anonymous guests/i
+    );
+    expect(client.from).not.toHaveBeenCalled();
   });
 });
 

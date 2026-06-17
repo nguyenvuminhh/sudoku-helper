@@ -1,10 +1,10 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 
 import {
-  ensureAnonymousSession,
   ensureProfile,
+  readExistingSession,
   signOut,
   updateDisplayName,
   type AccountUser,
@@ -35,8 +35,15 @@ export function useSupabaseAccount(): SupabaseAccountState {
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  const getClient = useCallback((): SupabaseClientRef => {
+    if (!clientRef.current) {
+      clientRef.current = createBrowserSupabaseClient() as SupabaseClientRef;
+    }
+    return clientRef.current;
+  }, []);
+
   const ensureAccount = useCallback(async (): Promise<AccountUser | null> => {
-    const client = clientRef.current;
+    const client = getClient();
     if (!client) {
       setStatus("unavailable");
       return null;
@@ -45,31 +52,36 @@ export function useSupabaseAccount(): SupabaseAccountState {
     setStatus("loading");
     setError(null);
     try {
-      const nextUser = await ensureAnonymousSession(client);
+      const nextUser = await readExistingSession(client);
+      if (!nextUser) {
+        setUser(null);
+        setProfile(null);
+        setStatus("guest");
+        setError("Sign in to save leaderboard records.");
+        return null;
+      }
+      if (nextUser.isAnonymous) {
+        setUser(null);
+        setProfile(null);
+        setStatus("guest");
+        setError("Anonymous guest sessions do not save leaderboard records.");
+        return null;
+      }
       const nextProfile = await ensureProfile(client, nextUser);
       setUser(nextUser);
       setProfile(nextProfile);
-      setStatus(nextUser.isAnonymous ? "guest" : "signed-in");
+      setStatus("signed-in");
       return nextUser;
     } catch (cause) {
       setStatus("error");
       setError(cause instanceof Error ? cause.message : "Account is unavailable");
       return null;
     }
-  }, []);
-
-  useEffect(() => {
-    clientRef.current = createBrowserSupabaseClient() as SupabaseClientRef;
-    if (!clientRef.current) {
-      setStatus("unavailable");
-      return;
-    }
-    void ensureAccount();
-  }, [ensureAccount]);
+  }, [getClient]);
 
   const updateName = useCallback(async (displayName: string) => {
     const client = clientRef.current;
-    if (!client || !user) {
+    if (!client || !user || user.isAnonymous) {
       setStatus(client ? "guest" : "unavailable");
       return;
     }

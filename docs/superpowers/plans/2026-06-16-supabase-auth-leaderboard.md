@@ -1,8 +1,14 @@
 # Supabase Auth Leaderboards Implementation Plan
 
+## 2026-06-17 Update
+
+This plan was superseded for guest behavior: guest play is local-only and does
+not start anonymous Supabase auth or touch leaderboard storage. Solve records
+and leaderboard reads are active only for non-anonymous signed-in sessions.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Add guest-first Supabase Auth, saved solve records, personal stats, and difficulty leaderboards where every completed solve is leaderboard-eligible.
+**Goal:** Add local guest play plus Supabase Auth-backed saved solve records, personal stats, and difficulty leaderboards where every completed signed-in solve is leaderboard-eligible.
 
 **Architecture:** The static Next.js frontend talks directly to Supabase through small helper modules guarded by RLS. FastAPI remains responsible for Sudoku/OCR endpoints only. The UI keeps local in-progress persistence and saves cloud records only after a puzzle is solved.
 
@@ -10,8 +16,8 @@
 
 ## Global Constraints
 
-- Default mode is guest mode through Supabase anonymous auth.
-- Every completed solve is saved and promoted to the leaderboard.
+- Default mode is local guest mode without Supabase anonymous auth.
+- Every completed signed-in solve is saved and promoted to the leaderboard.
 - V1 leaderboard grouping is by difficulty only.
 - No clean-solve filtering or eligibility rules in V1.
 - No Supabase service-role key in frontend code.
@@ -222,7 +228,7 @@ git commit -m "feat: add supabase leaderboard foundation"
 
 - [ ] **Step 1: Write repository tests first**
 
-Mock a minimal Supabase client shape and assert that anonymous sign-in is called only when no session exists, and that profile upsert uses the authenticated user id.
+Mock a minimal Supabase client shape and assert that anonymous sign-in is not called in the default guest path, and that profile upsert uses a non-anonymous authenticated user id.
 
 - [ ] **Step 2: Verify repository tests fail**
 
@@ -361,7 +367,7 @@ git commit -m "feat: save solves to difficulty leaderboards"
 
 - [ ] **Step 1: Add README setup notes**
 
-Document `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`, anonymous sign-in, and migration application.
+Document `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`, disabled anonymous sign-in, and migration application.
 
 - [ ] **Step 2: Run full verification**
 

@@ -52,9 +52,10 @@ export function useSolveRecords({
   account: SupabaseAccountState;
   solveMetadata: SolveMetadata | null;
 }): SolveRecordsState {
-  const clientRef = useRef<SupabaseSolveClient | null>(null);
   const savedKeysRef = useRef(new Set<string>());
   const savingKeyRef = useRef<string | null>(null);
+  const cloudUser = account.status === "signed-in" && account.user?.isAnonymous === false ? account.user : null;
+  const [client, setClient] = useState<SupabaseSolveClient | null>(null);
   const [saveStatus, setSaveStatus] = useState<SolveSaveStatus>("idle");
   const [saveError, setSaveError] = useState<string | null>(null);
   const [retryToken, setRetryToken] = useState(0);
@@ -67,8 +68,12 @@ export function useSolveRecords({
   const [personalStats, setPersonalStats] = useState<PersonalStats | null>(null);
 
   useEffect(() => {
-    clientRef.current = createBrowserSupabaseClient() as SupabaseSolveClient | null;
-  }, []);
+    if (!cloudUser) {
+      setClient(null);
+      return;
+    }
+    setClient(createBrowserSupabaseClient() as SupabaseSolveClient | null);
+  }, [cloudUser]);
 
   useEffect(() => {
     if (solveMetadata) {
@@ -77,7 +82,13 @@ export function useSolveRecords({
   }, [solveMetadata?.difficulty]);
 
   const refreshLeaderboard = useCallback(async () => {
-    const client = clientRef.current;
+    if (!cloudUser) {
+      setLeaderboardRows([]);
+      setPersonalStats(null);
+      setLeaderboardError("Sign in to view leaderboards.");
+      return;
+    }
+
     if (!client) {
       setLeaderboardRows([]);
       setPersonalStats(null);
@@ -90,18 +101,13 @@ export function useSolveRecords({
     try {
       const rows = await fetchDifficultyLeaderboard(client, leaderboardDifficulty, 20);
       setLeaderboardRows(rows);
-      const user = account.user;
-      if (user) {
-        setPersonalStats(await fetchPersonalStats(client, user.id, leaderboardDifficulty));
-      } else {
-        setPersonalStats(null);
-      }
+      setPersonalStats(await fetchPersonalStats(client, cloudUser.id, leaderboardDifficulty));
     } catch (cause) {
       setLeaderboardError(cause instanceof Error ? cause.message : "Leaderboard could not be loaded.");
     } finally {
       setLeaderboardLoading(false);
     }
-  }, [account.user, leaderboardDifficulty]);
+  }, [client, cloudUser, leaderboardDifficulty]);
 
   useEffect(() => {
     void refreshLeaderboard();
@@ -120,7 +126,12 @@ export function useSolveRecords({
       return;
     }
 
-    const client = clientRef.current;
+    if (!cloudUser) {
+      setSaveStatus("unavailable");
+      setSaveError("Sign in to save to the leaderboard.");
+      return;
+    }
+
     if (!client) {
       setSaveStatus("unavailable");
       setSaveError("Supabase is not configured.");
@@ -128,6 +139,7 @@ export function useSolveRecords({
     }
     const activeClient: SupabaseSolveClient = client;
     const activeMetadata: SolveMetadata = metadata;
+    const activeUser = cloudUser;
 
     let cancelled = false;
     savingKeyRef.current = key;
@@ -136,12 +148,8 @@ export function useSolveRecords({
 
     async function save() {
       try {
-        const user = account.user ?? (await account.ensureAccount());
-        if (!user) {
-          throw new Error("Guest session could not be started.");
-        }
         const record = await buildSolveRecordInput({
-          userId: user.id,
+          userId: activeUser.id,
           givensGrid: activeMetadata.givensGrid,
           givenMask: activeMetadata.givenMask,
           difficulty: activeMetadata.difficulty,
@@ -173,7 +181,7 @@ export function useSolveRecords({
     return () => {
       cancelled = true;
     };
-  }, [account.ensureAccount, account.user, refreshLeaderboard, retryToken, solveMetadata?.completionKey]);
+  }, [client, cloudUser, refreshLeaderboard, retryToken, solveMetadata?.completionKey]);
 
   const saveMessage = useMemo(() => {
     if (saveStatus === "saving") {
@@ -186,7 +194,7 @@ export function useSolveRecords({
       return saveError ?? "Solve could not be saved.";
     }
     if (saveStatus === "unavailable") {
-      return "Leaderboard unavailable until Supabase is configured.";
+      return saveError ?? "Leaderboard unavailable until Supabase is configured.";
     }
     return "";
   }, [saveError, saveStatus]);

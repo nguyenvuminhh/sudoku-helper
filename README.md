@@ -101,11 +101,13 @@ Run those in two separate terminals. `make be` starts FastAPI on `127.0.0.1:8001
 
 ## Supabase Auth and Leaderboards
 
-The app can save completed solves to Supabase using guest-first Supabase Auth.
-Without Supabase environment variables, Sudoku play still works and the account
-and leaderboard UI shows the cloud features as unavailable.
+Guest play is local-only by default and does not start a Supabase anonymous
+session or touch leaderboard storage. Supabase is used only when a
+non-anonymous signed-in session exists. Without Supabase environment variables,
+Sudoku play still works and the account and leaderboard UI shows the cloud
+features as unavailable.
 
-Create a Supabase project, enable Auth anonymous sign-ins, and run:
+Create a Supabase project, keep Auth anonymous sign-ins disabled, and run:
 
 ```sql
 -- In Supabase SQL editor or through the Supabase CLI:
@@ -120,8 +122,9 @@ NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=<publishable-or-anon-key>
 ```
 
 The browser uses the public key only. Do not put a Supabase service-role key in
-frontend environment variables. Every completed solve is saved as a leaderboard
-record for its difficulty; V1 does not apply clean-solve filtering.
+frontend environment variables. Completed solves are saved as leaderboard
+records only for non-anonymous signed-in users; V1 does not apply clean-solve
+filtering after a solve is eligible to save.
 
 ## Image Import Pipeline
 

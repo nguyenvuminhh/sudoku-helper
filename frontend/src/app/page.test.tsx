@@ -3,6 +3,7 @@ import { cleanup, fireEvent, render, screen, within } from "@testing-library/rea
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { SETTINGS_STORAGE_KEY } from "../hooks/useSettings";
+import type { SupabaseAccountState } from "../hooks/useSupabaseAccount";
 import { SAMPLE_PUZZLE } from "../lib/constants";
 import { decodePuzzleParam, encodePuzzleParam } from "../lib/share-codec";
 import { gridToPayload, parsePuzzleText } from "../lib/sudoku-state";
@@ -16,10 +17,10 @@ const accountHarness = vi.hoisted(() => ({
     profile: null,
     displayName: "Guest",
     error: null,
-    ensureAccount: vi.fn(async () => ({ id: "user-1", email: null, isAnonymous: true })),
+    ensureAccount: vi.fn(async () => null),
     updateName: vi.fn(async () => undefined),
     signOut: vi.fn(async () => undefined)
-  }
+  } as SupabaseAccountState
 }));
 
 vi.mock("../lib/api", async (importOriginal) => {
@@ -35,10 +36,8 @@ vi.mock("../hooks/useSupabaseAccount", () => ({
   useSupabaseAccount: () => accountHarness.account
 }));
 
-vi.mock("../lib/supabase", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("../lib/supabase")>();
+vi.mock("../lib/supabase", () => {
   return {
-    ...actual,
     createBrowserSupabaseClient: vi.fn(() => ({ from: vi.fn(), rpc: vi.fn() }))
   };
 });
@@ -126,7 +125,12 @@ function rightDrag(targets: HTMLElement[]): boolean {
 describe("SudokuTutorPage", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    accountHarness.account.ensureAccount.mockResolvedValue({ id: "user-1", email: null, isAnonymous: true });
+    accountHarness.account.status = "guest";
+    accountHarness.account.user = null;
+    accountHarness.account.profile = null;
+    accountHarness.account.displayName = "Guest";
+    accountHarness.account.error = null;
+    vi.mocked(accountHarness.account.ensureAccount).mockResolvedValue(null);
     saveSolveRecordMock.mockResolvedValue({
       id: "record-1",
       userId: "user-1",
@@ -601,7 +605,34 @@ describe("SudokuTutorPage", () => {
     expect(screen.getByText(/solved! you completed the puzzle/i)).toBeDefined();
   });
 
-  it("saves a completed solve to the leaderboard", async () => {
+  it("keeps a completed guest solve local instead of saving to the leaderboard", async () => {
+    const user = userEvent.setup();
+    const solution =
+      "534678912672195348198342567859761423426853791713924856961537284287419635345286179";
+    const puzzle = `${solution.slice(0, 72)}0${solution.slice(73, 80)}0`;
+    render(<SudokuTutorPage />);
+
+    await user.click(screen.getByRole("tab", { name: /import/i }));
+    await user.click(screen.getByLabelText(/81-character puzzle/i));
+    await user.paste(puzzle);
+    await user.click(screen.getByRole("button", { name: /load puzzle/i }));
+    await user.click(screen.getByRole("button", { name: /start solving/i }));
+    await user.click(screen.getByRole("button", { name: "9" }));
+    await user.click(cell(9, 9));
+    await user.click(cell(9, 1));
+
+    expect(await screen.findByText(/sign in to save to the leaderboard/i)).toBeDefined();
+    expect(accountHarness.account.ensureAccount).not.toHaveBeenCalled();
+    expect(saveSolveRecordMock).not.toHaveBeenCalled();
+    expect(fetchDifficultyLeaderboardMock).not.toHaveBeenCalled();
+    expect(fetchPersonalStatsMock).not.toHaveBeenCalled();
+  });
+
+  it("saves a completed solve to the leaderboard for a signed-in account", async () => {
+    accountHarness.account.status = "signed-in";
+    accountHarness.account.user = { id: "user-1", email: "user@example.com", isAnonymous: false };
+    accountHarness.account.profile = { id: "user-1", displayName: "Player One", avatarSeed: "user-1" };
+    accountHarness.account.displayName = "Player One";
     const user = userEvent.setup();
     const solution =
       "534678912672195348198342567859761423426853791713924856961537284287419635345286179";

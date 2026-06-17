@@ -40,6 +40,14 @@ begin
 end;
 $$;
 
+create or replace function public.is_non_anonymous_user()
+returns boolean
+language sql
+stable
+as $$
+  select coalesce(((select auth.jwt()) ->> 'is_anonymous')::boolean, false) = false;
+$$;
+
 drop trigger if exists profiles_set_updated_at on public.profiles;
 create trigger profiles_set_updated_at
   before update on public.profiles
@@ -53,36 +61,37 @@ drop policy if exists "Profiles are readable for leaderboard display." on public
 create policy "Profiles are readable for leaderboard display."
   on public.profiles
   for select
-  using (true);
+  to authenticated
+  using (public.is_non_anonymous_user());
 
 drop policy if exists "Users can create their own profile." on public.profiles;
 create policy "Users can create their own profile."
   on public.profiles
   for insert
   to authenticated
-  with check ((select auth.uid()) = id);
+  with check ((select auth.uid()) = id and public.is_non_anonymous_user());
 
 drop policy if exists "Users can update their own profile." on public.profiles;
 create policy "Users can update their own profile."
   on public.profiles
   for update
   to authenticated
-  using ((select auth.uid()) = id)
-  with check ((select auth.uid()) = id);
+  using ((select auth.uid()) = id and public.is_non_anonymous_user())
+  with check ((select auth.uid()) = id and public.is_non_anonymous_user());
 
 drop policy if exists "Users can read their own solve records." on public.solve_records;
 create policy "Users can read their own solve records."
   on public.solve_records
   for select
   to authenticated
-  using ((select auth.uid()) = user_id);
+  using ((select auth.uid()) = user_id and public.is_non_anonymous_user());
 
 drop policy if exists "Users can create their own solve records." on public.solve_records;
 create policy "Users can create their own solve records."
   on public.solve_records
   for insert
   to authenticated
-  with check ((select auth.uid()) = user_id);
+  with check ((select auth.uid()) = user_id and public.is_non_anonymous_user());
 
 create or replace function public.difficulty_leaderboard(
   selected_difficulty text,
@@ -117,7 +126,8 @@ as $$
       solve_records.*,
       rank() over (order by solve_records.elapsed_seconds asc, solve_records.completed_at asc) as rank
     from public.solve_records
-    where solve_records.difficulty = selected_difficulty
+    where public.is_non_anonymous_user()
+      and solve_records.difficulty = selected_difficulty
   ) ranked
   join public.profiles on profiles.id = ranked.user_id
   order by ranked.elapsed_seconds asc, ranked.completed_at asc
@@ -125,7 +135,8 @@ as $$
 $$;
 
 grant usage on schema public to anon, authenticated;
-grant select on public.profiles to anon, authenticated;
+grant select on public.profiles to authenticated;
 grant select, insert, update on public.profiles to authenticated;
 grant select, insert on public.solve_records to authenticated;
-grant execute on function public.difficulty_leaderboard(text, integer) to anon, authenticated;
+grant execute on function public.is_non_anonymous_user() to authenticated;
+grant execute on function public.difficulty_leaderboard(text, integer) to authenticated;

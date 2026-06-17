@@ -1,6 +1,6 @@
 "use client";
 
-import { LogIn, LogOut, UserCircle } from "lucide-react";
+import { LogOut, UserCircle } from "lucide-react";
 import { useState, type FormEvent } from "react";
 
 import type { SupabaseAccountState } from "../hooks/useSupabaseAccount";
@@ -9,6 +9,7 @@ export function AccountMenu({ account }: { account: SupabaseAccountState }) {
   const [open, setOpen] = useState(false);
   const [draftName, setDraftName] = useState(account.displayName);
   const cloudUnavailable = account.status === "unavailable";
+  const cloudUser = account.status === "signed-in" && account.user?.isAnonymous === false;
 
   async function handleNameSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -39,10 +40,10 @@ export function AccountMenu({ account }: { account: SupabaseAccountState }) {
               {cloudUnavailable
                 ? "Cloud stats unavailable"
                 : account.status === "loading"
-                  ? "Connecting guest session"
-                  : account.user?.isAnonymous !== false
-                    ? "Guest session"
-                    : "Signed in"}
+                  ? "Checking sign-in"
+                  : cloudUser
+                    ? "Signed in"
+                    : "Local guest mode"}
             </span>
           </div>
 
@@ -54,29 +55,21 @@ export function AccountMenu({ account }: { account: SupabaseAccountState }) {
               id="display-name"
               value={draftName}
               maxLength={40}
-              disabled={cloudUnavailable || !account.user}
+              disabled={!cloudUser}
               onChange={(event) => setDraftName(event.target.value)}
             />
-            <button type="submit" disabled={cloudUnavailable || !account.user || !draftName.trim()}>
+            <button type="submit" disabled={!cloudUser || !draftName.trim()}>
               Save name
             </button>
           </form>
 
-          {account.user ? (
+          {cloudUser ? (
             <button type="button" className="account-action" onClick={() => void account.signOut()}>
               <LogOut size={15} />
               Sign out
             </button>
           ) : (
-            <button
-              type="button"
-              className="account-action"
-              disabled={cloudUnavailable}
-              onClick={() => void account.ensureAccount()}
-            >
-              <LogIn size={15} />
-              Start guest session
-            </button>
+            <p className="account-note">Guest play stays local.</p>
           )}
         </div>
       ) : null}
