@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { cleanup, render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { useSupabaseAccount } from "./useSupabaseAccount";
@@ -7,6 +8,7 @@ import { useSupabaseAccount } from "./useSupabaseAccount";
 const supabaseHarness = vi.hoisted(() => ({
   createBrowserSupabaseClient: vi.fn(),
   getSession: vi.fn(),
+  signInWithOtp: vi.fn(),
   signInAnonymously: vi.fn()
 }));
 
@@ -19,6 +21,11 @@ function AccountProbe() {
   return <div data-testid="account-status">{account.status}</div>;
 }
 
+function SignInProbe() {
+  const account = useSupabaseAccount();
+  return <button onClick={() => void account.signInWithEmail("player@example.com")}>Sign in</button>;
+}
+
 describe("useSupabaseAccount", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -27,9 +34,11 @@ describe("useSupabaseAccount", () => {
       data: { user: { id: "guest-1", email: null, is_anonymous: true } },
       error: null
     });
+    supabaseHarness.signInWithOtp.mockResolvedValue({ data: {}, error: null });
     supabaseHarness.createBrowserSupabaseClient.mockReturnValue({
       auth: {
         getSession: supabaseHarness.getSession,
+        signInWithOtp: supabaseHarness.signInWithOtp,
         signInAnonymously: supabaseHarness.signInAnonymously
       },
       from: vi.fn(() => ({
@@ -62,6 +71,20 @@ describe("useSupabaseAccount", () => {
     expect(screen.getByTestId("account-status").textContent).toBe("guest");
     expect(supabaseHarness.createBrowserSupabaseClient).not.toHaveBeenCalled();
     expect(supabaseHarness.getSession).not.toHaveBeenCalled();
+    expect(supabaseHarness.signInAnonymously).not.toHaveBeenCalled();
+  });
+
+  it("sends an email sign-in link without starting anonymous auth", async () => {
+    const user = userEvent.setup();
+    window.history.pushState({}, "", "/");
+    render(<SignInProbe />);
+
+    await user.click(screen.getByRole("button", { name: /sign in/i }));
+
+    expect(supabaseHarness.signInWithOtp).toHaveBeenCalledWith({
+      email: "player@example.com",
+      options: { emailRedirectTo: `${window.location.origin}/` }
+    });
     expect(supabaseHarness.signInAnonymously).not.toHaveBeenCalled();
   });
 });

@@ -36,6 +36,7 @@ type SupabaseErrorResult = {
 export type SupabaseAuthClient = {
   auth: {
     getSession: () => Promise<SupabaseResult<{ session: SupabaseAuthSession | null }>>;
+    signInWithOtp?: (payload: { email: string; options: { emailRedirectTo: string } }) => Promise<SupabaseErrorResult>;
     signOut?: () => Promise<SupabaseErrorResult>;
   };
 };
@@ -214,6 +215,26 @@ export async function updateDisplayName(
   const result = await profiles.update({ display_name: trimmed }).eq("id", userId).select(PROFILE_COLUMNS).single();
   throwIfError(result.error, "Unable to update profile");
   return mapProfile(result.data);
+}
+
+export async function sendSignInLink(
+  client: SupabaseAuthClient,
+  email: string,
+  emailRedirectTo: string
+): Promise<void> {
+  const trimmed = email.trim();
+  if (!trimmed) {
+    throw new Error("Email address is required");
+  }
+  if (!client.auth.signInWithOtp) {
+    throw new Error("Email sign-in is unavailable");
+  }
+
+  const result = await client.auth.signInWithOtp({
+    email: trimmed,
+    options: { emailRedirectTo }
+  });
+  throwIfError(result.error, "Unable to send sign-in link");
 }
 
 export async function signOut(client: SupabaseAuthClient): Promise<void> {

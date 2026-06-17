@@ -312,13 +312,19 @@ h3 {
 }
 
 .account-summary span,
-.account-error {
+.account-error,
+.account-success,
+.account-note {
   color: var(--muted);
   font-size: 0.78rem;
 }
 
 .account-error {
   color: var(--coral);
+}
+
+.account-success {
+  color: var(--teal);
 }
 
 .account-form {
@@ -355,6 +361,10 @@ h3 {
   gap: 7px;
   height: 34px;
   justify-content: center;
+}
+
+.account-form button:disabled {
+  opacity: 0.55;
 }
 
 .account-action {

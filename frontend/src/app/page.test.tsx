@@ -18,6 +18,7 @@ const accountHarness = vi.hoisted(() => ({
     displayName: "Guest",
     error: null,
     ensureAccount: vi.fn(async () => null),
+    signInWithEmail: vi.fn(async () => undefined),
     updateName: vi.fn(async () => undefined),
     signOut: vi.fn(async () => undefined)
   } as SupabaseAccountState
@@ -131,6 +132,7 @@ describe("SudokuTutorPage", () => {
     accountHarness.account.displayName = "Guest";
     accountHarness.account.error = null;
     vi.mocked(accountHarness.account.ensureAccount).mockResolvedValue(null);
+    vi.mocked(accountHarness.account.signInWithEmail).mockResolvedValue(undefined);
     saveSolveRecordMock.mockResolvedValue({
       id: "record-1",
       userId: "user-1",
@@ -181,8 +183,20 @@ describe("SudokuTutorPage", () => {
   it("starts in guest mode without blocking puzzle setup", () => {
     render(<SudokuTutorPage />);
 
-    expect(screen.getByRole("button", { name: /guest account/i })).toBeDefined();
+    expect(screen.getByRole("button", { name: /^sign in$/i })).toBeDefined();
     expect(screen.getByRole("heading", { name: /start a puzzle/i })).toBeDefined();
+  });
+
+  it("sends a sign-in link from the account menu", async () => {
+    const user = userEvent.setup();
+    render(<SudokuTutorPage />);
+
+    await user.click(screen.getByRole("button", { name: /^sign in$/i }));
+    await user.type(screen.getByLabelText(/email/i), "player@example.com");
+    await user.click(screen.getByRole("button", { name: /send sign-in link/i }));
+
+    expect(accountHarness.account.signInWithEmail).toHaveBeenCalledWith("player@example.com");
+    expect(await screen.findByText(/check your email/i)).toBeDefined();
   });
 
   it("types digits into the board and advances to the next empty cell", async () => {

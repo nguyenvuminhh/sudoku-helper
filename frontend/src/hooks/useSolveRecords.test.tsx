@@ -36,6 +36,7 @@ const localGuestAccount: SupabaseAccountState = {
   displayName: "Guest",
   error: null,
   ensureAccount: vi.fn(async () => null),
+  signInWithEmail: vi.fn(async () => undefined),
   updateName: vi.fn(async () => undefined),
   signOut: vi.fn(async () => undefined)
 };
