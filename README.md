@@ -149,6 +149,24 @@ SUPABASE_DB_PASSWORD=<database password>
 The workflow installs the Supabase CLI, links the project, and runs
 `supabase db push --linked`. Keep anonymous sign-ins disabled in Supabase Auth.
 
+### Supabase Auth URL configuration
+
+The migration workflow also updates Supabase Auth URL settings through the
+Management API. By default it sets the Auth Site URL to the GitHub Pages URL
+derived from `NEXT_PUBLIC_BASE_PATH` and adds that URL plus local development
+URLs to the redirect allow-list:
+
+```text
+https://<github-user>.github.io/<repo-name>/
+http://localhost:3000/**
+http://127.0.0.1:3000/**
+```
+
+Set `SUPABASE_AUTH_SITE_URL` as a GitHub Actions repository variable only when
+the production frontend uses a custom domain or a non-standard Pages URL. Set
+`SUPABASE_AUTH_REDIRECT_URLS` to add more comma-separated redirect URLs, such as
+preview deployment URLs.
+
 ## Image Import Pipeline
 
 The upload endpoint is local-first and uses OpenCV grid extraction before digit

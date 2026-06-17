@@ -170,6 +170,22 @@ class PublicReleaseFilesTests(unittest.TestCase):
         self.assertIn("SUPABASE_PROJECT_ID", readme)
         self.assertIn("SUPABASE_DB_PASSWORD", readme)
 
+    def test_supabase_workflow_configures_auth_redirect_urls(self):
+        workflow = (ROOT / ".github" / "workflows" / "supabase-migrations.yml").read_text(encoding="utf-8")
+        readme = (ROOT / "README.md").read_text(encoding="utf-8")
+
+        self.assertIn("/config/auth", workflow)
+        self.assertIn("site_url", workflow)
+        self.assertIn("uri_allow_list", workflow)
+        self.assertIn("SUPABASE_AUTH_SITE_URL", workflow)
+        self.assertIn("NEXT_PUBLIC_BASE_PATH", workflow)
+        self.assertIn("http://localhost:3000/**", workflow)
+        self.assertIn("http://127.0.0.1:3000/**", workflow)
+
+        self.assertIn("Supabase Auth URL configuration", readme)
+        self.assertIn("SUPABASE_AUTH_SITE_URL", readme)
+        self.assertIn("redirect allow-list", readme)
+
     def test_next_config_supports_optional_github_pages_base_path(self):
         next_config = (ROOT / "frontend" / "next.config.ts").read_text(encoding="utf-8")
 
