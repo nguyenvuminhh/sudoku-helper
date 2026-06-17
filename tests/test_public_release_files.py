@@ -15,6 +15,7 @@ class PublicReleaseFilesTests(unittest.TestCase):
             "frontend/.env.example",
             ".github/workflows/ci.yml",
             ".github/workflows/frontend-pages.yml",
+            ".github/workflows/supabase-migrations.yml",
             "THIRD_PARTY_NOTICES.md",
             "tools/sudoku-engine-cli/Cargo.toml",
         ]
@@ -140,6 +141,28 @@ class PublicReleaseFilesTests(unittest.TestCase):
         self.assertIn("actions/deploy-pages", workflow)
         self.assertIn("path: frontend/out", workflow)
         self.assertIn("NEXT_PUBLIC_API_BASE_URL", workflow)
+
+    def test_supabase_migration_workflow_deploys_checked_in_migrations(self):
+        workflow = (ROOT / ".github" / "workflows" / "supabase-migrations.yml").read_text(encoding="utf-8")
+        readme = (ROOT / "README.md").read_text(encoding="utf-8")
+
+        self.assertIn("Deploy Supabase Migrations", workflow)
+        self.assertIn("branches: [main]", workflow)
+        self.assertIn("supabase/migrations/**", workflow)
+        self.assertIn("workflow_dispatch:", workflow)
+        self.assertIn("concurrency:", workflow)
+        self.assertIn("supabase/setup-cli@v2", workflow)
+        self.assertIn("SUPABASE_ACCESS_TOKEN", workflow)
+        self.assertIn("SUPABASE_PROJECT_ID", workflow)
+        self.assertIn("SUPABASE_DB_PASSWORD", workflow)
+        self.assertIn("supabase link --project-ref", workflow)
+        self.assertIn("supabase db push --linked", workflow)
+        self.assertIn("--yes", workflow)
+
+        self.assertIn("Supabase migration deployment", readme)
+        self.assertIn("SUPABASE_ACCESS_TOKEN", readme)
+        self.assertIn("SUPABASE_PROJECT_ID", readme)
+        self.assertIn("SUPABASE_DB_PASSWORD", readme)
 
     def test_next_config_supports_optional_github_pages_base_path(self):
         next_config = (ROOT / "frontend" / "next.config.ts").read_text(encoding="utf-8")

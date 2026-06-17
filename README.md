@@ -126,6 +126,25 @@ frontend environment variables. Completed solves are saved as leaderboard
 records only for non-anonymous signed-in users; V1 does not apply clean-solve
 filtering after a solve is eligible to save.
 
+### Supabase migration deployment
+
+Checked-in Supabase migrations deploy through
+`.github/workflows/supabase-migrations.yml`. The workflow runs on pushes to
+`main` that change `supabase/migrations/**`, and it can also be run manually
+from GitHub Actions.
+
+Add these GitHub Actions repository secrets before enabling automatic
+migrations:
+
+```text
+SUPABASE_ACCESS_TOKEN=<Supabase personal access token>
+SUPABASE_PROJECT_ID=<project-ref>
+SUPABASE_DB_PASSWORD=<database password>
+```
+
+The workflow installs the Supabase CLI, links the project, and runs
+`supabase db push --linked`. Keep anonymous sign-ins disabled in Supabase Auth.
+
 ## Image Import Pipeline
 
 The upload endpoint is local-first and uses OpenCV grid extraction before digit
