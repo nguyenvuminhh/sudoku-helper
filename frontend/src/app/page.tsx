@@ -1,6 +1,7 @@
 "use client";
 
 import { Check, CircleAlert, Gauge, Pause, PartyPopper, Play, Timer } from "lucide-react";
+import { useState } from "react";
 
 import { FinishDialog } from "../components/FinishDialog";
 import { Keypad } from "../components/Keypad";
@@ -12,6 +13,8 @@ import { TopBar } from "../components/TopBar";
 import { useClickOutsideBoard } from "../hooks/useClickOutsideBoard";
 import { useImageImport } from "../hooks/useImageImport";
 import { useKeyboardShortcuts } from "../hooks/useKeyboardShortcuts";
+import { useSolveRecords } from "../hooks/useSolveRecords";
+import { useSupabaseAccount } from "../hooks/useSupabaseAccount";
 import { useSudokuGame } from "../hooks/useSudokuGame";
 import { useTheme } from "../hooks/useTheme";
 import { formatElapsedSeconds } from "../lib/time";
@@ -19,6 +22,9 @@ import { formatElapsedSeconds } from "../lib/time";
 export default function SudokuTutorPage() {
   const game = useSudokuGame();
   const { theme, toggleTheme } = useTheme();
+  const account = useSupabaseAccount();
+  const solveRecords = useSolveRecords({ account, solveMetadata: game.solveMetadata });
+  const [leaderboardOpenToken, setLeaderboardOpenToken] = useState(0);
   const imageImport = useImageImport(game);
   useKeyboardShortcuts(game);
   useClickOutsideBoard(game);
@@ -28,7 +34,7 @@ export default function SudokuTutorPage() {
 
   return (
     <main className="app-shell">
-      <TopBar theme={theme} onToggleTheme={toggleTheme} />
+      <TopBar theme={theme} account={account} onToggleTheme={toggleTheme} />
 
       <div className="stage">
         <section className="board-col" aria-label="Sudoku board">
@@ -187,6 +193,8 @@ export default function SudokuTutorPage() {
               canShare={game.canSharePuzzle}
               hintReady={game.hintReady}
               history={game.history}
+              leaderboard={solveRecords}
+              leaderboardOpenToken={leaderboardOpenToken}
               settings={game.settings}
               onToggleQuickFill={game.toggleQuickFillMode}
               onToggleAllNotes={game.toggleAllNotes}
@@ -210,7 +218,18 @@ export default function SudokuTutorPage() {
       />
 
       {game.showFinishDialog ? (
-        <FinishDialog stats={game.finishStats} onNewPuzzle={game.reset} onClose={game.dismissFinish} />
+        <FinishDialog
+          stats={game.finishStats}
+          saveStatus={solveRecords.saveStatus}
+          saveMessage={solveRecords.saveMessage}
+          onRetrySave={solveRecords.retrySave}
+          onViewLeaderboard={() => {
+            game.dismissFinish();
+            setLeaderboardOpenToken((value) => value + 1);
+          }}
+          onNewPuzzle={game.reset}
+          onClose={game.dismissFinish}
+        />
       ) : null}
     </main>
   );

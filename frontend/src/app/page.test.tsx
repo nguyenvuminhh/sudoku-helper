@@ -9,12 +9,47 @@ import { gridToPayload, parsePuzzleText } from "../lib/sudoku-state";
 
 import SudokuTutorPage from "./page";
 
+const accountHarness = vi.hoisted(() => ({
+  account: {
+    status: "guest" as const,
+    user: null,
+    profile: null,
+    displayName: "Guest",
+    error: null,
+    ensureAccount: vi.fn(async () => ({ id: "user-1", email: null, isAnonymous: true })),
+    updateName: vi.fn(async () => undefined),
+    signOut: vi.fn(async () => undefined)
+  }
+}));
+
 vi.mock("../lib/api", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../lib/api")>();
   return {
     ...actual,
     requestGeneratedPuzzle: vi.fn(),
     recognizeImage: vi.fn()
+  };
+});
+
+vi.mock("../hooks/useSupabaseAccount", () => ({
+  useSupabaseAccount: () => accountHarness.account
+}));
+
+vi.mock("../lib/supabase", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../lib/supabase")>();
+  return {
+    ...actual,
+    createBrowserSupabaseClient: vi.fn(() => ({ from: vi.fn(), rpc: vi.fn() }))
+  };
+});
+
+vi.mock("../lib/supabase-repository", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../lib/supabase-repository")>();
+  return {
+    ...actual,
+    saveSolveRecord: vi.fn(),
+    fetchDifficultyLeaderboard: vi.fn(),
+    fetchPersonalStats: vi.fn()
   };
 });
 
@@ -38,6 +73,10 @@ vi.mock("../hooks/useHintEngine", () => ({
 
 const api = await import("../lib/api");
 const requestGeneratedPuzzleMock = vi.mocked(api.requestGeneratedPuzzle);
+const repository = await import("../lib/supabase-repository");
+const saveSolveRecordMock = vi.mocked(repository.saveSolveRecord);
+const fetchDifficultyLeaderboardMock = vi.mocked(repository.fetchDifficultyLeaderboard);
+const fetchPersonalStatsMock = vi.mocked(repository.fetchPersonalStats);
 const SOLVABLE_PUZZLE =
   "530070000600195000098000060800060003400803001700020006060000280000419005000080079";
 const NEAR_COMPLETE_SOLUTION =
@@ -87,6 +126,37 @@ function rightDrag(targets: HTMLElement[]): boolean {
 describe("SudokuTutorPage", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    accountHarness.account.ensureAccount.mockResolvedValue({ id: "user-1", email: null, isAnonymous: true });
+    saveSolveRecordMock.mockResolvedValue({
+      id: "record-1",
+      userId: "user-1",
+      puzzleFingerprint: "a".repeat(64),
+      difficulty: "custom",
+      elapsedSeconds: 0,
+      hintsUsed: 0,
+      checksUsed: 0,
+      givens: 79,
+      filledByUser: 2,
+      techniques: [],
+      completedAt: "2026-06-16T19:00:00.000Z"
+    });
+    fetchDifficultyLeaderboardMock.mockResolvedValue([
+      {
+        rank: 1,
+        profileId: "user-1",
+        displayName: "Guest",
+        difficulty: "custom",
+        elapsedSeconds: 0,
+        hintsUsed: 0,
+        checksUsed: 0,
+        completedAt: "2026-06-16T19:00:00.000Z"
+      }
+    ]);
+    fetchPersonalStatsMock.mockResolvedValue({
+      completedSolves: 1,
+      bestTimeSeconds: 0,
+      recent: []
+    });
     window.localStorage.clear();
     window.history.pushState({}, "", "/");
     Object.defineProperty(navigator, "clipboard", { value: undefined, configurable: true });
@@ -102,6 +172,13 @@ describe("SudokuTutorPage", () => {
     expect(screen.getByRole("grid", { name: /sudoku grid/i })).toBeDefined();
     expect(screen.getByRole("heading", { name: /start a puzzle/i })).toBeDefined();
     expect(screen.getByText(/enter a puzzle on the board or upload/i)).toBeDefined();
+  });
+
+  it("starts in guest mode without blocking puzzle setup", () => {
+    render(<SudokuTutorPage />);
+
+    expect(screen.getByRole("button", { name: /guest account/i })).toBeDefined();
+    expect(screen.getByRole("heading", { name: /start a puzzle/i })).toBeDefined();
   });
 
   it("types digits into the board and advances to the next empty cell", async () => {
@@ -522,6 +599,32 @@ describe("SudokuTutorPage", () => {
     expect(screen.queryByRole("dialog")).toBeNull();
     expect(screen.getByText(/solved in/i)).toBeDefined();
     expect(screen.getByText(/solved! you completed the puzzle/i)).toBeDefined();
+  });
+
+  it("saves a completed solve to the leaderboard", async () => {
+    const user = userEvent.setup();
+    const solution =
+      "534678912672195348198342567859761423426853791713924856961537284287419635345286179";
+    const puzzle = `${solution.slice(0, 72)}0${solution.slice(73, 80)}0`;
+    render(<SudokuTutorPage />);
+
+    await user.click(screen.getByRole("tab", { name: /import/i }));
+    await user.click(screen.getByLabelText(/81-character puzzle/i));
+    await user.paste(puzzle);
+    await user.click(screen.getByRole("button", { name: /load puzzle/i }));
+    await user.click(screen.getByRole("button", { name: /start solving/i }));
+    await user.click(screen.getByRole("button", { name: "9" }));
+    await user.click(cell(9, 9));
+    await user.click(cell(9, 1));
+
+    expect(await screen.findByText(/saved to leaderboard/i)).toBeDefined();
+    expect(saveSolveRecordMock).toHaveBeenCalledTimes(1);
+    expect(saveSolveRecordMock.mock.calls[0][1]).toMatchObject({
+      user_id: "user-1",
+      difficulty: "custom",
+      givens: 79,
+      filled_by_user: 2
+    });
   });
 
   it("restores the saved session after a reload", async () => {
