@@ -1075,6 +1075,7 @@ export function useSudokuGame() {
     setPuzzleText,
     setGeneratedLevel
   };
+}
 
 
 function generatedPuzzleRating(generated: GeneratedPuzzleResponse): PuzzleRating | null {
@@ -1086,4 +1087,3 @@ function generatedPuzzleRating(generated: GeneratedPuzzleResponse): PuzzleRating
   }
   return null;
 }
-
