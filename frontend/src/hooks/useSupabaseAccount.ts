@@ -1,10 +1,11 @@
 "use client";
 
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import {
   ensureProfile,
   readExistingSession,
+  sendSignInLink,
   signOut,
   updateDisplayName,
   type AccountUser,
@@ -22,6 +23,7 @@ export type SupabaseAccountState = {
   displayName: string;
   error: string | null;
   ensureAccount: () => Promise<AccountUser | null>;
+  signInWithEmail: (email: string) => Promise<void>;
   updateName: (displayName: string) => Promise<void>;
   signOut: () => Promise<void>;
 };
@@ -42,13 +44,10 @@ export function useSupabaseAccount(): SupabaseAccountState {
     return clientRef.current;
   }, []);
 
-  const ensureAccount = useCallback(async (): Promise<AccountUser | null> => {
-    const client = getClient();
-    if (!client) {
-      setStatus("unavailable");
-      return null;
-    }
-
+  const loadSession = useCallback(async (
+    client: SupabaseAccountClient,
+    missingSessionError: string | null
+  ): Promise<AccountUser | null> => {
     setStatus("loading");
     setError(null);
     try {
@@ -57,7 +56,7 @@ export function useSupabaseAccount(): SupabaseAccountState {
         setUser(null);
         setProfile(null);
         setStatus("guest");
-        setError("Sign in to save leaderboard records.");
+        setError(missingSessionError);
         return null;
       }
       if (nextUser.isAnonymous) {
@@ -76,6 +75,49 @@ export function useSupabaseAccount(): SupabaseAccountState {
       setStatus("error");
       setError(cause instanceof Error ? cause.message : "Account is unavailable");
       return null;
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!hasAuthCallback()) {
+      return;
+    }
+    const client = getClient();
+    if (!client) {
+      setStatus("unavailable");
+      setError("Supabase is not configured.");
+      return;
+    }
+    void loadSession(client, "Sign-in link could not be completed.");
+  }, [getClient, loadSession]);
+
+  const ensureAccount = useCallback(async (): Promise<AccountUser | null> => {
+    const client = getClient();
+    if (!client) {
+      setStatus("unavailable");
+      return null;
+    }
+
+    return loadSession(client, "Sign in to save leaderboard records.");
+  }, [getClient, loadSession]);
+
+  const signInWithEmail = useCallback(async (email: string) => {
+    const client = getClient();
+    if (!client) {
+      setStatus("unavailable");
+      setError("Supabase is not configured.");
+      throw new Error("Supabase is not configured.");
+    }
+
+    setStatus("loading");
+    setError(null);
+    try {
+      await sendSignInLink(client, email, getAuthRedirectUrl());
+      setStatus("guest");
+    } catch (cause) {
+      setStatus("error");
+      setError(cause instanceof Error ? cause.message : "Sign-in link could not be sent");
+      throw cause;
     }
   }, [getClient]);
 
@@ -118,7 +160,29 @@ export function useSupabaseAccount(): SupabaseAccountState {
     displayName: profile?.displayName ?? "Guest",
     error,
     ensureAccount,
+    signInWithEmail,
     updateName,
     signOut: signOutAccount
   };
+}
+
+function getAuthRedirectUrl(): string {
+  if (typeof window === "undefined") {
+    return "";
+  }
+  return `${window.location.origin}${window.location.pathname}`;
+}
+
+function hasAuthCallback(): boolean {
+  if (typeof window === "undefined") {
+    return false;
+  }
+
+  const url = new URL(window.location.href);
+  if (url.searchParams.has("code") || url.searchParams.has("error")) {
+    return true;
+  }
+
+  const hash = new URLSearchParams(window.location.hash.replace(/^#/, ""));
+  return hash.has("access_token") || hash.has("refresh_token") || hash.has("error");
 }
