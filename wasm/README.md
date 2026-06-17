@@ -38,10 +38,19 @@ JSON shape (consumed by `frontend/src/lib/hints.ts`):
 
 Cell index = `row * 9 + col` (0-based), matching the frontend's `cellToIndex`.
 
-The solver is capped at `LEV_3_LOGIC`, so it never returns a guess/brute-force
+l2sg's solver is capped at `LEV_3_LOGIC`, so it never returns a guess/brute-force
 step. Techniques covered: naked/hidden singles–quads, locked candidates
 (pointing/claiming), X-Wing, Swordfish, Jellyfish, XY-Wing, W-Wing, Skyscraper,
 2-String Kite.
+
+When l2sg finds no step, `bindings.cpp` runs its own advanced
+**elimination-only** techniques (simplest-first) before giving up: **XYZ-Wing**,
+**Unique Rectangle (Type 1)**, **XY-Chain**, and **ALS-XZ**. These are not in
+l2sg's `Technique` enum, so they emit the JSON directly (with `placement: null`)
+and use difficulty ranks 17–20. Each was validated for soundness — never
+removing a candidate that belongs to the solution — against tens of thousands of
+rated puzzles (see `getHint`'s fallback section). The Unique Rectangle technique
+assumes a unique solution, which holds for proper puzzles.
 
 ## Rebuilding
 

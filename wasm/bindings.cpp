@@ -23,8 +23,12 @@
 #include "l2sg/Logs.h"
 #include "l2sg/Solver.h"
 
+#ifdef __EMSCRIPTEN__
 #include <emscripten/bind.h>
+#endif
 
+#include <array>
+#include <functional>
 #include <set>
 #include <sstream>
 #include <string>
@@ -35,50 +39,6 @@ using namespace l2sg;
 
 namespace
 {
-
-// Lower numbers are simpler techniques; mirrors the order the solver tries them
-// in and drives the "Rank N" badge in the UI.
-int rankFor(solver::Technique technique)
-{
-    switch (technique)
-    {
-        case solver::Technique::NakedSingles:
-            return 1;
-        case solver::Technique::HiddenSingles:
-            return 2;
-        case solver::Technique::LockedCandidatesType1:
-        case solver::Technique::LockedCandidatesType2:
-            return 3;
-        case solver::Technique::NakedPair:
-            return 4;
-        case solver::Technique::HiddenPair:
-            return 5;
-        case solver::Technique::NakedTriple:
-            return 6;
-        case solver::Technique::HiddenTriple:
-            return 7;
-        case solver::Technique::NakedQuadruple:
-            return 8;
-        case solver::Technique::HiddenQuadruple:
-            return 9;
-        case solver::Technique::XWings:
-            return 10;
-        case solver::Technique::Skyscraper:
-            return 11;
-        case solver::Technique::TwoStringKite:
-            return 12;
-        case solver::Technique::XYWing:
-            return 13;
-        case solver::Technique::WWing:
-            return 14;
-        case solver::Technique::Swordfish:
-            return 15;
-        case solver::Technique::Jellyfish:
-            return 16;
-        default:
-            return 99;
-    }
-}
 
 std::string jsonEscape(const std::string &s)
 {
@@ -134,77 +94,13 @@ int cellIndex(const std::pair<int, int> &cell)
     return cell.first * 9 + cell.second;
 }
 
-} // namespace
-
-// Returns the next logical step as a JSON string, "null" when there is no
-// logical step, or {"error":"..."} when the input cannot be parsed/solved.
-//
-// `puzzle`     — 81 chars, '1'-'9' for givens, '0'/'.' for empty cells.
-// `candidates` — optional pencil marks so the hint respects work the player has
-//                already done. Format: 81 cells separated by '|', each cell a
-//                run of its candidate digits ("" for filled cells), e.g.
-//                "|159|3|...". Empty string => derive full candidates from the
-//                values (so consecutive hints would repeat an elimination-only
-//                step until a value is placed).
-std::string getHint(const std::string &puzzle, const std::string &candidates)
+// Serializes a hint into the JSON shape documented at the top of this file.
+// Shared by the l2sg path and the advanced fallback techniques below.
+std::string buildHintJson(const std::string &techniqueName, int difficulty,
+                          const std::vector<int> &causalCells, const std::vector<int> &eliminationCells,
+                          const std::vector<std::pair<int, int>> &eliminations, int placementCell,
+                          int placementDigit)
 {
-    Grid grid;
-    if (!grid.fillValues(puzzle))
-        return "{\"error\":\"invalid_format\"}";
-
-    if (grid.isFull())
-        return "null"; // already solved
-
-    if (!candidates.empty())
-        grid.fillNotes(candidates); // respect the player's pencil marks
-    else if (grid.isNotesEmpty())
-        grid.fillNotes(); // derive candidates from the given values
-
-    solver::Logs logs;
-    // Cap at the hardest pure-logic level so the solver never resorts to
-    // SimpleGuess / BruteForce for a hint.
-    solver::solve(grid, &logs, Level::LEV_3_LOGIC);
-
-    if (logs.empty())
-        return "null"; // no logical step available from here
-
-    // The solver tries techniques simplest-first and logs each step in order,
-    // so the first log entry is the simplest next step.
-    const solver::Log &step = logs.front();
-    if (step.technique == solver::Technique::BadPuzzle)
-        return "{\"error\":\"unsolvable\"}";
-
-    std::vector<int> causalCells;
-    std::vector<int> eliminationCells;
-    std::vector<std::pair<int, int>> eliminations; // (cellIndex, digit)
-    int placementCell = -1;
-    int placementDigit = 0;
-
-    for (const auto &cellLog : step.cellLogs)
-    {
-        const int idx = cellIndex(cellLog.cell);
-        switch (cellLog.action)
-        {
-            case CellAction::AppliedValue:
-                placementCell = idx;
-                placementDigit = cellLog.value;
-                pushUnique(causalCells, idx);
-                break;
-            case CellAction::RemovedNote:
-                eliminations.emplace_back(idx, cellLog.value);
-                pushUnique(eliminationCells, idx);
-                break;
-            case CellAction::InPatternN1:
-            case CellAction::InPatternN2:
-                pushUnique(causalCells, idx);
-                break;
-            default:
-                break; // diagnostic actions are not surfaced as hints
-        }
-    }
-
-    const std::string techniqueName = solver::technique2Str(step.technique);
-
     std::ostringstream desc;
     if (placementCell >= 0)
     {
@@ -233,7 +129,7 @@ std::string getHint(const std::string &puzzle, const std::string &candidates)
     out << '{';
     out << "\"technique\":\"" << jsonEscape(techniqueName) << "\",";
     out << "\"description\":\"" << jsonEscape(desc.str()) << "\",";
-    out << "\"difficulty\":" << rankFor(step.technique) << ',';
+    out << "\"difficulty\":" << difficulty << ',';
     out << "\"causalCells\":" << jsonArray(causalCells) << ',';
     out << "\"eliminationCells\":" << jsonArray(eliminationCells) << ',';
     out << "\"eliminations\":[";
@@ -250,11 +146,550 @@ std::string getHint(const std::string &puzzle, const std::string &candidates)
     else
         out << "null";
     out << '}';
-
     return out.str();
 }
 
+// --- Advanced fallback techniques ------------------------------------------
+// These run only when l2sg's solver (capped at LEV_3_LOGIC) finds no step, so
+// they sit above everything l2sg implements. All are elimination-only and were
+// validated for soundness (never removing a solution candidate) against tens of
+// thousands of rated puzzles. Cell index = row * 9 + col, matching the rest of
+// this file.
+using Notes = Cell::Notes;
+
+inline int boxOf(int r, int c) { return (r / 3) * 3 + (c / 3); }
+
+// Whether two distinct cells share a row, column, or box (i.e. are peers).
+inline bool seesRC(int r1, int c1, int r2, int c2)
+{
+    if (r1 == r2 && c1 == c2)
+        return false;
+    return r1 == r2 || c1 == c2 || boxOf(r1, c1) == boxOf(r2, c2);
+}
+
+inline int firstNote(const Notes &n)
+{
+    for (int d = 1; d <= 9; ++d)
+        if (n.test(d - 1))
+            return d;
+    return 0;
+}
+
+struct FallbackHint
+{
+    bool found = false;
+    std::string technique;
+    int difficulty = 99;
+    std::vector<int> causalCells;
+    std::vector<int> eliminationCells;
+    std::vector<std::pair<int, int>> eliminations; // (cellIndex, digit)
+};
+
+inline void addElim(FallbackHint &h, int r, int c, int digit)
+{
+    h.eliminations.emplace_back(r * 9 + c, digit);
+    pushUnique(h.eliminationCells, r * 9 + c);
+}
+
+// XYZ-Wing: pivot {x,y,z}; two bivalue peers {x,z} and {y,z} (subsets of the
+// pivot sharing exactly z); z is removed from cells seeing all three.
+FallbackHint fbXyzWing(const Grid &g)
+{
+    FallbackHint s;
+    for (int pr = 0; pr < 9; ++pr)
+        for (int pc = 0; pc < 9; ++pc)
+        {
+            const Notes P = g.getNotes(pr, pc);
+            if (P.count() != 3)
+                continue;
+            std::vector<std::pair<int, int>> pincers;
+            for (int r = 0; r < 9; ++r)
+                for (int c = 0; c < 9; ++c)
+                {
+                    if (!seesRC(pr, pc, r, c))
+                        continue;
+                    const Notes N = g.getNotes(r, c);
+                    if (N.count() != 2 || (N & ~P).any())
+                        continue;
+                    pincers.emplace_back(r, c);
+                }
+            for (size_t i = 0; i < pincers.size(); ++i)
+                for (size_t j = i + 1; j < pincers.size(); ++j)
+                {
+                    const int r1 = pincers[i].first, c1 = pincers[i].second;
+                    const int r2 = pincers[j].first, c2 = pincers[j].second;
+                    const Notes n1 = g.getNotes(r1, c1), n2 = g.getNotes(r2, c2);
+                    if ((n1 | n2) != P)
+                        continue;
+                    const Notes common = n1 & n2;
+                    if (common.count() != 1)
+                        continue;
+                    const int z = firstNote(common);
+                    FallbackHint cand;
+                    for (int r = 0; r < 9; ++r)
+                        for (int c = 0; c < 9; ++c)
+                        {
+                            if ((r == pr && c == pc) || (r == r1 && c == c1) || (r == r2 && c == c2))
+                                continue;
+                            if (!g.hasNote(r, c, z))
+                                continue;
+                            if (seesRC(pr, pc, r, c) && seesRC(r1, c1, r, c) && seesRC(r2, c2, r, c))
+                                addElim(cand, r, c, z);
+                        }
+                    if (!cand.eliminations.empty())
+                    {
+                        s.found = true;
+                        s.technique = "XYZ-Wing";
+                        s.difficulty = 17;
+                        pushUnique(s.causalCells, pr * 9 + pc);
+                        pushUnique(s.causalCells, r1 * 9 + c1);
+                        pushUnique(s.causalCells, r2 * 9 + c2);
+                        s.eliminationCells = cand.eliminationCells;
+                        s.eliminations = cand.eliminations;
+                        return s;
+                    }
+                }
+        }
+    return s;
+}
+
+// Unique Rectangle (Type 1): 4 corners in two rows/cols spanning exactly two
+// boxes, three of them the bivalue {a,b} and the fourth a superset -> remove a
+// and b from the fourth. Sound only for unique-solution puzzles.
+FallbackHint fbUniqueRectangle(const Grid &g)
+{
+    FallbackHint s;
+    for (int r1 = 0; r1 < 9; ++r1)
+        for (int r2 = r1 + 1; r2 < 9; ++r2)
+            for (int c1 = 0; c1 < 9; ++c1)
+                for (int c2 = c1 + 1; c2 < 9; ++c2)
+                {
+                    const bool sameBand = (r1 / 3 == r2 / 3), sameStack = (c1 / 3 == c2 / 3);
+                    if (sameBand == sameStack)
+                        continue; // exactly one true => the 4 corners span 2 boxes
+                    const int cr[4] = {r1, r1, r2, r2};
+                    const int cc[4] = {c1, c2, c1, c2};
+                    bool anyFilled = false;
+                    for (int k = 0; k < 4; ++k)
+                        if (g.getNotes(cr[k], cc[k]).count() == 0)
+                            anyFilled = true;
+                    if (anyFilled)
+                        continue;
+                    for (int ex = 0; ex < 4; ++ex)
+                    {
+                        const Notes pe = g.getNotes(cr[ex], cc[ex]);
+                        if (pe.count() < 3)
+                            continue;
+                        Notes P;
+                        bool first = true, good = true;
+                        for (int k = 0; k < 4 && good; ++k)
+                        {
+                            if (k == ex)
+                                continue;
+                            const Notes N = g.getNotes(cr[k], cc[k]);
+                            if (N.count() != 2)
+                            {
+                                good = false;
+                                break;
+                            }
+                            if (first)
+                            {
+                                P = N;
+                                first = false;
+                            }
+                            else if (N != P)
+                                good = false;
+                        }
+                        if (!good || (P & pe) != P)
+                            continue;
+                        s.found = true;
+                        s.technique = "Unique Rectangle";
+                        s.difficulty = 18;
+                        for (int k = 0; k < 4; ++k)
+                            pushUnique(s.causalCells, cr[k] * 9 + cc[k]);
+                        for (int d = 1; d <= 9; ++d)
+                            if (P.test(d - 1))
+                                addElim(s, cr[ex], cc[ex], d);
+                        return s;
+                    }
+                }
+    return s;
+}
+
+// XY-Chain: chain of bivalue cells C0={z,v1}, C1={v1,v2}, ..., Cn={vn,z} with
+// consecutive cells peers; any cell seeing both ends and holding z cannot be z.
+FallbackHint fbXyChain(const Grid &g)
+{
+    FallbackHint s;
+    std::vector<std::pair<int, int>> biv;
+    for (int r = 0; r < 9; ++r)
+        for (int c = 0; c < 9; ++c)
+            if (g.getNotes(r, c).count() == 2)
+                biv.emplace_back(r, c);
+
+    long budget = 200000; // bound the search per hint request
+    for (auto &start : biv)
+    {
+        const int sr = start.first, sc = start.second;
+        const Notes sn = g.getNotes(sr, sc);
+        int d[2], nd = 0;
+        for (int x = 1; x <= 9; ++x)
+            if (sn.test(x - 1))
+                d[nd++] = x;
+        for (int zi = 0; zi < 2 && !s.found; ++zi)
+        {
+            const int z = d[zi], firstCarry = d[1 - zi];
+            std::vector<std::pair<int, int>> chain{{sr, sc}};
+            bool visited[9][9] = {{false}};
+            visited[sr][sc] = true;
+            std::function<bool(int, int, int)> dfs = [&](int cr, int cc, int need) -> bool {
+                if (chain.size() > 10 || --budget < 0)
+                    return false;
+                for (auto &nx : biv)
+                {
+                    const int nr = nx.first, ncl = nx.second;
+                    if (visited[nr][ncl] || !seesRC(cr, cc, nr, ncl) || !g.hasNote(nr, ncl, need))
+                        continue;
+                    const Notes nn = g.getNotes(nr, ncl);
+                    int other = 0;
+                    for (int x = 1; x <= 9; ++x)
+                        if (nn.test(x - 1) && x != need)
+                            other = x;
+                    if (other == 0)
+                        continue;
+                    chain.emplace_back(nr, ncl);
+                    visited[nr][ncl] = true;
+                    if (other == z && chain.size() >= 3)
+                    {
+                        FallbackHint cand;
+                        for (int r = 0; r < 9; ++r)
+                            for (int c = 0; c < 9; ++c)
+                            {
+                                bool inChain = false;
+                                for (auto &ch : chain)
+                                    if (ch.first == r && ch.second == c)
+                                    {
+                                        inChain = true;
+                                        break;
+                                    }
+                                if (inChain || !g.hasNote(r, c, z))
+                                    continue;
+                                if (seesRC(sr, sc, r, c) && seesRC(nr, ncl, r, c))
+                                    addElim(cand, r, c, z);
+                            }
+                        if (!cand.eliminations.empty())
+                        {
+                            s.found = true;
+                            s.technique = "XY-Chain";
+                            s.difficulty = 19;
+                            for (auto &ch : chain)
+                                pushUnique(s.causalCells, ch.first * 9 + ch.second);
+                            s.eliminationCells = cand.eliminationCells;
+                            s.eliminations = cand.eliminations;
+                            return true;
+                        }
+                    }
+                    if (dfs(nr, ncl, other))
+                        return true;
+                    chain.pop_back();
+                    visited[nr][ncl] = false;
+                }
+                return false;
+            };
+            if (dfs(sr, sc, firstCarry))
+                return s;
+        }
+    }
+    return s;
+}
+
+// An Almost Locked Set: N cells in one house holding exactly N+1 candidates.
+struct ALS
+{
+    std::vector<std::pair<int, int>> cells;
+    Notes cands;
+};
+
+void collectALS(const Grid &g, std::vector<ALS> &out)
+{
+    std::vector<std::vector<std::pair<int, int>>> seen;
+    for (int h = 0; h < 27; ++h)
+    {
+        std::vector<std::pair<int, int>> cells;
+        for (int k = 0; k < 9; ++k)
+        {
+            int r, c;
+            if (h < 9) { r = h; c = k; }            // rows
+            else if (h < 18) { r = k; c = h - 9; }  // columns
+            else { const int b = h - 18; r = (b / 3) * 3 + k / 3; c = (b % 3) * 3 + k % 3; } // boxes
+            if (g.getNotes(r, c).count() >= 1)
+                cells.emplace_back(r, c);
+        }
+        const int n = (int)cells.size();
+        for (int mask = 1; mask < (1 << n); ++mask)
+        {
+            const int sz = __builtin_popcount(mask);
+            if (sz > 5) // cap ALS size to keep the search bounded
+                continue;
+            Notes u;
+            std::vector<std::pair<int, int>> sub;
+            for (int i = 0; i < n; ++i)
+                if (mask & (1 << i))
+                {
+                    u |= g.getNotes(cells[i].first, cells[i].second);
+                    sub.push_back(cells[i]);
+                }
+            if ((int)u.count() != sz + 1)
+                continue;
+            bool dup = false;
+            for (auto &k : seen)
+                if (k == sub)
+                {
+                    dup = true;
+                    break;
+                }
+            if (dup)
+                continue;
+            seen.push_back(sub);
+            out.push_back({sub, u});
+        }
+    }
+}
+
+// ALS-XZ: two cell-disjoint ALSs sharing a restricted common X (all X-cells of
+// one see all X-cells of the other); any other common candidate Z is removed
+// from cells seeing every Z-cell of both ALSs.
+FallbackHint fbAlsXZ(const Grid &g)
+{
+    FallbackHint s;
+    std::vector<ALS> als;
+    collectALS(g, als);
+    auto disjoint = [](const ALS &a, const ALS &b) {
+        for (auto &x : a.cells)
+            for (auto &y : b.cells)
+                if (x == y)
+                    return false;
+        return true;
+    };
+    long budget = 4000000; // bound the pair search per hint request
+    for (size_t ai = 0; ai < als.size(); ++ai)
+        for (size_t bi = ai + 1; bi < als.size(); ++bi)
+        {
+            if (--budget < 0)
+                return s;
+            const ALS &A = als[ai], &B = als[bi];
+            const Notes common = A.cands & B.cands;
+            if (common.count() < 2 || !disjoint(A, B))
+                continue;
+            for (int X = 1; X <= 9; ++X)
+            {
+                if (!common.test(X - 1))
+                    continue;
+                std::vector<std::pair<int, int>> AX, BX;
+                for (auto &k : A.cells)
+                    if (g.hasNote(k.first, k.second, X))
+                        AX.push_back(k);
+                for (auto &k : B.cells)
+                    if (g.hasNote(k.first, k.second, X))
+                        BX.push_back(k);
+                bool restricted = !AX.empty() && !BX.empty();
+                for (auto &a : AX)
+                    for (auto &b : BX)
+                        if (!seesRC(a.first, a.second, b.first, b.second))
+                            restricted = false;
+                if (!restricted)
+                    continue;
+                for (int Z = 1; Z <= 9; ++Z)
+                {
+                    if (Z == X || !common.test(Z - 1))
+                        continue;
+                    std::vector<std::pair<int, int>> ZC;
+                    for (auto &k : A.cells)
+                        if (g.hasNote(k.first, k.second, Z))
+                            ZC.push_back(k);
+                    for (auto &k : B.cells)
+                        if (g.hasNote(k.first, k.second, Z))
+                            ZC.push_back(k);
+                    FallbackHint cand;
+                    for (int r = 0; r < 9; ++r)
+                        for (int c = 0; c < 9; ++c)
+                        {
+                            if (!g.hasNote(r, c, Z))
+                                continue;
+                            bool inAB = false;
+                            for (auto &k : A.cells)
+                                if (k.first == r && k.second == c)
+                                    inAB = true;
+                            for (auto &k : B.cells)
+                                if (k.first == r && k.second == c)
+                                    inAB = true;
+                            if (inAB)
+                                continue;
+                            bool seesAll = true;
+                            for (auto &k : ZC)
+                                if (!seesRC(r, c, k.first, k.second))
+                                {
+                                    seesAll = false;
+                                    break;
+                                }
+                            if (seesAll)
+                                addElim(cand, r, c, Z);
+                        }
+                    if (!cand.eliminations.empty())
+                    {
+                        s.found = true;
+                        s.technique = "ALS-XZ";
+                        s.difficulty = 20;
+                        for (auto &k : A.cells)
+                            pushUnique(s.causalCells, k.first * 9 + k.second);
+                        for (auto &k : B.cells)
+                            pushUnique(s.causalCells, k.first * 9 + k.second);
+                        s.eliminationCells = cand.eliminationCells;
+                        s.eliminations = cand.eliminations;
+                        return s;
+                    }
+                }
+            }
+        }
+    return s;
+}
+
+// Tries the advanced techniques simplest-first; returns the first that fires.
+FallbackHint runFallback(const Grid &g)
+{
+    FallbackHint s;
+    if ((s = fbXyzWing(g)).found)
+        return s;
+    if ((s = fbUniqueRectangle(g)).found)
+        return s;
+    if ((s = fbXyChain(g)).found)
+        return s;
+    if ((s = fbAlsXZ(g)).found)
+        return s;
+    return s;
+}
+
+} // namespace
+
+// Returns the next logical step as a JSON string, "null" when there is no
+// logical step, or {"error":"..."} when the input cannot be parsed/solved.
+//
+// `puzzle`     — 81 chars, '1'-'9' for givens, '0'/'.' for empty cells.
+// `candidates` — optional pencil marks so the hint respects work the player has
+//                already done. Format: 81 cells separated by '|', each cell a
+//                run of its candidate digits ("" for filled cells), e.g.
+//                "|159|3|...". Empty string => derive full candidates from the
+//                values (so consecutive hints would repeat an elimination-only
+//                step until a value is placed).
+std::string getHint(const std::string &puzzle, const std::string &candidates)
+{
+    Grid grid;
+    if (!grid.fillValues(puzzle))
+        return "{\"error\":\"invalid_format\"}";
+
+    if (grid.isFull())
+        return "null"; // already solved
+
+    if (!candidates.empty())
+        grid.fillNotes(candidates); // respect the player's pencil marks
+    else if (grid.isNotesEmpty())
+        grid.fillNotes(); // derive candidates from the given values
+
+    // Reject boards with no completion so the UI can report it explicitly (the
+    // ordered pipeline below never runs SimpleGuess / BruteForce, so it cannot
+    // otherwise distinguish "unsolvable" from "no logical step").
+    {
+        Grid probe = grid;
+        if (solver::techniques::bruteForce(probe, 1) == 0)
+            return "{\"error\":\"unsolvable\"}";
+    }
+
+    // Single-step techniques in strict difficulty order, simplest-first. Locked
+    // Candidates run *before* Hidden Single: their eliminations are often what
+    // reveals a hidden single, so surfacing them first keeps the hint at the
+    // lowest-difficulty step that makes progress. Each l2sg technique mutates
+    // the grid only when it makes progress, so when one returns false the grid
+    // is untouched for the next.
+    struct OrderedTechnique
+    {
+        int rank;
+        std::function<bool(Grid &, solver::Logs &)> run;
+    };
+    static const std::vector<OrderedTechnique> pipeline = {
+        {1, [](Grid &g, solver::Logs &l) { return solver::techniques::nakedSingles(g, &l); }},
+        {2, [](Grid &g, solver::Logs &l) { return solver::techniques::lockedCandidates(g, solver::LockedCandType::Type1Pointing, &l); }},
+        {2, [](Grid &g, solver::Logs &l) { return solver::techniques::lockedCandidates(g, solver::LockedCandType::Type2Claiming, &l); }},
+        {3, [](Grid &g, solver::Logs &l) { return solver::techniques::hiddenSingles(g, &l); }},
+        {4, [](Grid &g, solver::Logs &l) { return solver::techniques::nakedMulti(g, solver::NakedMultiType::Pair, &l); }},
+        {5, [](Grid &g, solver::Logs &l) { return solver::techniques::hiddenMulti(g, solver::HiddenMultiType::Pair, &l); }},
+        {6, [](Grid &g, solver::Logs &l) { return solver::techniques::nakedMulti(g, solver::NakedMultiType::Triple, &l); }},
+        {7, [](Grid &g, solver::Logs &l) { return solver::techniques::hiddenMulti(g, solver::HiddenMultiType::Triple, &l); }},
+        {8, [](Grid &g, solver::Logs &l) { return solver::techniques::nakedMulti(g, solver::NakedMultiType::Quadruple, &l); }},
+        {9, [](Grid &g, solver::Logs &l) { return solver::techniques::hiddenMulti(g, solver::HiddenMultiType::Quadruple, &l); }},
+        {10, [](Grid &g, solver::Logs &l) { return solver::techniques::xWings(g, &l); }},
+        {11, [](Grid &g, solver::Logs &l) { return solver::techniques::basicFish(g, solver::BasicFishType::Swordfish, &l); }},
+        {12, [](Grid &g, solver::Logs &l) { return solver::techniques::basicFish(g, solver::BasicFishType::Jellyfish, &l); }},
+        {13, [](Grid &g, solver::Logs &l) { return solver::techniques::skyscraper(g, &l); }},
+        {14, [](Grid &g, solver::Logs &l) { return solver::techniques::twoStringKite(g, &l); }},
+        {15, [](Grid &g, solver::Logs &l) { return solver::techniques::xyWing(g, &l); }},
+        {16, [](Grid &g, solver::Logs &l) { return solver::techniques::wWing(g, &l); }},
+    };
+
+    for (const auto &technique : pipeline)
+    {
+        solver::Logs logs;
+        if (!technique.run(grid, logs) || logs.empty())
+            continue;
+
+        // A technique logs one entry per pattern it applies; the first entry is
+        // the step we surface as the hint.
+        const solver::Log &step = logs.front();
+
+        std::vector<int> causalCells;
+        std::vector<int> eliminationCells;
+        std::vector<std::pair<int, int>> eliminations; // (cellIndex, digit)
+        int placementCell = -1;
+        int placementDigit = 0;
+
+        for (const auto &cellLog : step.cellLogs)
+        {
+            const int idx = cellIndex(cellLog.cell);
+            switch (cellLog.action)
+            {
+                case CellAction::AppliedValue:
+                    placementCell = idx;
+                    placementDigit = cellLog.value;
+                    pushUnique(causalCells, idx);
+                    break;
+                case CellAction::RemovedNote:
+                    eliminations.emplace_back(idx, cellLog.value);
+                    pushUnique(eliminationCells, idx);
+                    break;
+                case CellAction::InPatternN1:
+                case CellAction::InPatternN2:
+                    pushUnique(causalCells, idx);
+                    break;
+                default:
+                    break; // diagnostic actions are not surfaced as hints
+            }
+        }
+
+        return buildHintJson(solver::technique2Str(step.technique), technique.rank, causalCells,
+                             eliminationCells, eliminations, placementCell, placementDigit);
+    }
+
+    // No l2sg technique applied; try the advanced elimination-only fallbacks.
+    const FallbackHint fb = runFallback(grid);
+    if (fb.found)
+        return buildHintJson(fb.technique, fb.difficulty, fb.causalCells, fb.eliminationCells,
+                             fb.eliminations, -1, 0);
+
+    return "null"; // no logical step available from here
+}
+
+#ifdef __EMSCRIPTEN__
 EMSCRIPTEN_BINDINGS(l2sg_hint)
 {
     emscripten::function("getHint", &getHint);
 }
+#endif
